@@ -20,22 +20,25 @@ class DocumentStyle
 {
     // ── Headings ─────────────────────────────────────────────────────────────
 
-    public float $h1Size    = 20.0;
+    public float  $h1Size    = 20.0;
     /** @var int[] */
-    public array $h1Color   = [33, 33, 33];
-    public float $h1Spacing = 14.0;  // mm advanced after h1
+    public array  $h1Color   = [33, 33, 33];
+    public float  $h1Spacing = 14.0;  // mm advanced after h1
+    public string $h1Style   = 'B';   // '' | 'B' | 'I' | 'BI'
 
-    public float $h2Size    = 14.0;
+    public float  $h2Size    = 14.0;
     /** @var int[] */
-    public array $h2Color   = [80, 80, 80];
-    public float $h2Spacing = 10.0;
+    public array  $h2Color   = [80, 80, 80];
+    public float  $h2Spacing = 10.0;
+    public string $h2Style   = '';
 
     // ── Paragraph ────────────────────────────────────────────────────────────
 
-    public float $pSize    = 10.0;
+    public float  $pSize    = 10.0;
     /** @var int[] */
-    public array $pColor   = [100, 100, 100];
-    public float $pSpacing = 7.0;
+    public array  $pColor   = [100, 100, 100];
+    public float  $pSpacing = 7.0;
+    public string $pStyle   = '';
 
     // ── Horizontal rule ──────────────────────────────────────────────────────
 

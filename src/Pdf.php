@@ -25,9 +25,21 @@ class Pdf
     private float $defaultW = 595.28;
     private float $defaultH = 841.89;
 
+    // ── Font registry ────────────────────────────────────────────────────────
+
+    /**
+     * Maps 'Family:STYLE' => ['alias' => 'F1', 'name' => 'Helvetica-Bold']
+     * Populated lazily as setFont() is called.
+     * @var array<string, array{alias: string, name: string}>
+     */
+    private array  $fonts           = ['Helvetica:' => ['alias' => 'F1', 'name' => 'Helvetica']];
+    private int    $fontCount       = 1;
+    private string $currentFontKey  = 'Helvetica:';
+
     // ── Graphics state ───────────────────────────────────────────────────────
 
     private string $fontFamily = 'Helvetica';
+    private string $fontStyle  = '';
     private float  $fontSize   = 12.0;
     /** @var int[] */
     private array $textColor = [0, 0, 0];
@@ -106,18 +118,33 @@ class Pdf
     }
 
     /**
-     * Set the active font. Only core PDF fonts are supported in v1.
+     * Set the active font.
+     *
+     * Supported families: 'Helvetica', 'Times-Roman', 'Courier'
+     * Supported styles:   '' normal | 'B' bold | 'I' italic | 'BI' bold+italic
      *
      * @param string $family 'Helvetica' | 'Times-Roman' | 'Courier'
      * @param float  $size   Font size in points (e.g. 12)
-     * @param string $style  Reserved for future use: 'B', 'I', 'BI'
+     * @param string $style  '' | 'B' | 'I' | 'BI'
      */
     public function setFont(string $family, float $size, string $style = ''): static
     {
-        unset($style); // reserved — bold/italic coming in a future version
+        $style = strtoupper($style);
+        $key   = $family . ':' . $style;
 
-        $this->fontFamily = $family;
-        $this->fontSize   = $size;
+        if (!isset($this->fonts[$key])) {
+            $this->fontCount++;
+            $this->fonts[$key] = [
+                'alias' => 'F' . $this->fontCount,
+                'name'  => $this->resolveFontName($family, $style),
+            ];
+        }
+
+        $this->fontFamily     = $family;
+        $this->fontStyle      = $style;
+        $this->fontSize       = $size;
+        $this->currentFontKey = $key;
+
         return $this;
     }
 
@@ -239,9 +266,10 @@ class Pdf
         $pdfY  = $pageH - ($y * self::MM_TO_PT) - $this->fontSize;
         $col   = $this->colorOp($this->textColor, 'rg');
         $esc   = $this->escapeText($text);
+        $alias = $this->fonts[$this->currentFontKey]['alias'];
 
         $this->writePage(
-            "BT\n$col\n/F1 $this->fontSize Tf\n$pdfX $pdfY Td\n($esc) Tj\nET\n"
+            "BT\n$col\n/$alias $this->fontSize Tf\n$pdfX $pdfY Td\n($esc) Tj\nET\n"
         );
 
         return $this;
@@ -294,11 +322,12 @@ class Pdf
                 'R'     => ($this->x + $w - $textW - 1) * $sf,
                 default => ($this->x + 1) * $sf,
             };
-            $ty  = $py + ($ph - $this->fontSize) / 2;
-            $col = $this->colorOp($this->textColor, 'rg');
-            $esc = $this->escapeText($text);
+            $ty    = $py + ($ph - $this->fontSize) / 2;
+            $col   = $this->colorOp($this->textColor, 'rg');
+            $esc   = $this->escapeText($text);
+            $alias = $this->fonts[$this->currentFontKey]['alias'];
 
-            $out .= "BT\n$col\n/F1 $this->fontSize Tf\n$tx $ty Td\n($esc) Tj\nET\n";
+            $out .= "BT\n$col\n/$alias $this->fontSize Tf\n$tx $ty Td\n($esc) Tj\nET\n";
         }
 
         $this->writePage($out);
@@ -502,11 +531,15 @@ class Pdf
         $catalogId = $nextId++;  // 1
         $pagesId   = $nextId++;  // 2
 
-        // Font object
-        $fontId = $nextId++;
-        $this->addObject($fontId,
-            "<< /Type /Font /Subtype /Type1 /BaseFont /$this->fontFamily /Encoding /WinAnsiEncoding >>"
-        );
+        // Font objects — one per registered variant
+        $fontObjMap = [];  // alias => PDF object ID
+        foreach ($this->fonts as $font) {
+            $fontId = $nextId++;
+            $fontObjMap[$font['alias']] = $fontId;
+            $this->addObject($fontId,
+                "<< /Type /Font /Subtype /Type1 /BaseFont /{$font['name']} /Encoding /WinAnsiEncoding >>"
+            );
+        }
 
         // Image XObjects
         $imageObjMap = [];  // alias => PDF object ID
@@ -552,7 +585,11 @@ class Pdf
             );
 
             // Resources: fonts + image XObjects
-            $fontRes  = "/Font << /F1 $fontId 0 R >>";
+            $fontParts = [];
+            foreach ($fontObjMap as $alias => $oid) {
+                $fontParts[] = "/$alias $oid 0 R";
+            }
+            $fontRes = '/Font << ' . implode(' ', $fontParts) . ' >>';
             $xobjRes  = '';
             if (!empty($imageObjMap)) {
                 $parts = [];
@@ -628,6 +665,28 @@ class Pdf
         if ($this->currentPage === 0) {
             throw new RuntimeException('No page open. Call addPage() first.');
         }
+    }
+
+    private function resolveFontName(string $family, string $style): string
+    {
+        return match ($style) {
+            'B'        => match ($family) {
+                'Times-Roman' => 'Times-Bold',
+                'Courier'     => 'Courier-Bold',
+                default       => $family . '-Bold',
+            },
+            'I'        => match ($family) {
+                'Times-Roman' => 'Times-Italic',
+                'Courier'     => 'Courier-Oblique',
+                default       => $family . '-Oblique',
+            },
+            'BI', 'IB' => match ($family) {
+                'Times-Roman' => 'Times-BoldItalic',
+                'Courier'     => 'Courier-BoldOblique',
+                default       => $family . '-BoldOblique',
+            },
+            default    => $family,
+        };
     }
 
     private function colorOp(array $rgb, string $op): string

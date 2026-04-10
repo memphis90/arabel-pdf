@@ -45,7 +45,7 @@ class Col
     {
         $s = $this->style;
         $this->pdf
-            ->setFont($this->documentFont, $s->h1Size)
+            ->setFont($this->documentFont, $s->h1Size, $s->h1Style)
             ->setTextColor(...$s->h1Color)
             ->text($this->x, $this->y, $text);
 
@@ -58,7 +58,7 @@ class Col
     {
         $s = $this->style;
         $this->pdf
-            ->setFont($this->documentFont, $s->h2Size)
+            ->setFont($this->documentFont, $s->h2Size, $s->h2Style)
             ->setTextColor(...$s->h2Color)
             ->text($this->x, $this->y, $text);
 
@@ -71,7 +71,46 @@ class Col
     {
         $s = $this->style;
         $this->pdf
-            ->setFont($this->documentFont, $s->pSize)
+            ->setFont($this->documentFont, $s->pSize, $s->pStyle)
+            ->setTextColor(...$s->pColor)
+            ->text($this->x, $this->y, $text);
+
+        $this->row->trackHeight($s->pSpacing);
+        return $this->row;
+    }
+
+    /** Render bold text in this column — returns the parent Row. */
+    public function b(string $text): Row
+    {
+        $s = $this->style;
+        $this->pdf
+            ->setFont($this->documentFont, $s->pSize, 'B')
+            ->setTextColor(...$s->pColor)
+            ->text($this->x, $this->y, $text);
+
+        $this->row->trackHeight($s->pSpacing);
+        return $this->row;
+    }
+
+    /** Render italic text in this column — returns the parent Row. */
+    public function i(string $text): Row
+    {
+        $s = $this->style;
+        $this->pdf
+            ->setFont($this->documentFont, $s->pSize, 'I')
+            ->setTextColor(...$s->pColor)
+            ->text($this->x, $this->y, $text);
+
+        $this->row->trackHeight($s->pSpacing);
+        return $this->row;
+    }
+
+    /** Render bold+italic text in this column — returns the parent Row. */
+    public function bi(string $text): Row
+    {
+        $s = $this->style;
+        $this->pdf
+            ->setFont($this->documentFont, $s->pSize, 'BI')
             ->setTextColor(...$s->pColor)
             ->text($this->x, $this->y, $text);
 
