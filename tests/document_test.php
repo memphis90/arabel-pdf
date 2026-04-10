@@ -1,12 +1,14 @@
 <?php
 
 require_once __DIR__ . '/../src/Pdf.php';
+require_once __DIR__ . '/../src/DocumentStyle.php';
 require_once __DIR__ . '/../src/Layout/Row.php';
 require_once __DIR__ . '/../src/Layout/Col.php';
 require_once __DIR__ . '/../src/Layout/Table.php';
 require_once __DIR__ . '/../src/Document.php';
 
 use Arabel\Pdf\Document;
+use Arabel\Pdf\DocumentStyle;
 
 $doc = new Document();
 
@@ -87,10 +89,34 @@ $doc->addPage('L')
         ->col(6)->p('Documentazione API pubblica entro maggio.')
     ->endRow();
 
+// ── Pagina 3: stile custom ───────────────────────────────────────────────────
+
+$style = new DocumentStyle();
+$style->h1Color     = [200, 0, 50];      // rosso
+$style->h2Color     = [200, 0, 50];
+$style->tableHeadBg = [200, 0, 50];      // header tabella rosso
+$style->tableAltBg  = [255, 240, 243];   // alternanza rosato
+
+$doc2 = new Document(style: $style);
+$doc2->addPage()
+    ->h1('Stile Custom — Brand Rosso')
+    ->h2('Stesso API, aspetto diverso')
+    ->hr()
+    ->spacer()
+    ->p('Questo documento usa un DocumentStyle personalizzato.')
+    ->spacer()
+    ->table(['Prodotto', 'Stato', 'Priorità'])
+        ->tr(['Text wrapping', 'In sviluppo', 'Alta'])
+        ->tr(['Bold / Italic',  'In sviluppo', 'Alta'])
+        ->tr(['PNG Alpha',      'Pianificato', 'Media'])
+    ->endTable()
+    ->output(__DIR__ . '/output/document_style_test.pdf', 'F');
+
 // ── Output ───────────────────────────────────────────────────────────────────
 
 $out = __DIR__ . '/output/document_test.pdf';
 $doc->output($out, 'F');
 
 echo "PDF generato: $out\n";
-echo "Pagine: 2 (portrait + landscape)\n";
+echo "PDF stile custom: " . __DIR__ . "/output/document_style_test.pdf\n";
+echo "Pagine: 2 (portrait + landscape) + 1 stile custom\n";

@@ -17,7 +17,8 @@ use Arabel\Pdf\Layout\Table;
  */
 class Document
 {
-    private Pdf $pdf;
+    private Pdf           $pdf;
+    private DocumentStyle $style;
 
     private string $documentFont = 'Helvetica';
 
@@ -29,10 +30,11 @@ class Document
     /** Current Y cursor in mm from page top. */
     private float $cursorY = 15.0;
 
-    public function __construct(string $font = '')
+    public function __construct(string $font = '', ?DocumentStyle $style = null)
     {
         $this->documentFont = !empty($font) ? $font : $this->documentFont;
-        $this->pdf = new Pdf();
+        $this->style        = $style ?? new DocumentStyle();
+        $this->pdf          = new Pdf();
         $this->pdf->setMargins($this->marginLeft, $this->marginTop, $this->marginRight);
     }
 
@@ -47,7 +49,6 @@ class Document
     {
         $this->pdf->addPage($orientation);
 
-        // In landscape, swap width so contentWidth() stays correct
         $this->pageW   = strtoupper($orientation) === 'L' ? 297.0 : 210.0;
         $this->cursorY = $this->marginTop;
 
@@ -56,51 +57,55 @@ class Document
 
     // ── Typography ───────────────────────────────────────────────────────────
 
-    /** Large heading — 20pt, dark grey. */
+    /** Large heading. */
     public function h1(string $text): static
     {
+        $s = $this->style;
         $this->pdf
-            ->setFont($this->documentFont, 20)
-            ->setTextColor(33, 33, 33)
+            ->setFont($this->documentFont, $s->h1Size)
+            ->setTextColor(...$s->h1Color)
             ->text($this->marginLeft, $this->cursorY, $text);
 
-        $this->cursorY += 14;
+        $this->cursorY += $s->h1Spacing;
         return $this;
     }
 
-    /** Section heading — 14pt, medium grey. */
+    /** Section heading. */
     public function h2(string $text): static
     {
+        $s = $this->style;
         $this->pdf
-            ->setFont($this->documentFont, 14)
-            ->setTextColor(80, 80, 80)
+            ->setFont($this->documentFont, $s->h2Size)
+            ->setTextColor(...$s->h2Color)
             ->text($this->marginLeft, $this->cursorY, $text);
 
-        $this->cursorY += 10;
+        $this->cursorY += $s->h2Spacing;
         return $this;
     }
 
-    /** Body paragraph — 10pt, soft grey. */
+    /** Body paragraph. */
     public function p(string $text): static
     {
+        $s = $this->style;
         $this->pdf
-            ->setFont($this->documentFont, 10)
-            ->setTextColor(100, 100, 100)
+            ->setFont($this->documentFont, $s->pSize)
+            ->setTextColor(...$s->pColor)
             ->text($this->marginLeft, $this->cursorY, $text);
 
-        $this->cursorY += 7;
+        $this->cursorY += $s->pSpacing;
         return $this;
     }
 
     /** Horizontal rule — thin line across the full content width. */
     public function hr(): static
     {
+        $s = $this->style;
         $this->pdf
-            ->setDrawColor(200, 200, 200)
+            ->setDrawColor(...$s->hrColor)
             ->setLineWidth(0.2)
             ->line($this->marginLeft, $this->cursorY, $this->marginLeft + $this->contentWidth(), $this->cursorY);
 
-        $this->cursorY += 4;
+        $this->cursorY += $s->hrSpacing;
         return $this;
     }
 
@@ -125,7 +130,7 @@ class Document
      */
     public function row(): Row
     {
-        return new Row($this, $this->pdf, $this->cursorY, $this->contentWidth(), $this->marginLeft, $this->documentFont);
+        return new Row($this, $this->pdf, $this->cursorY, $this->contentWidth(), $this->marginLeft, $this->documentFont, $this->style);
     }
 
     // ── Table ────────────────────────────────────────────────────────────────
@@ -143,7 +148,7 @@ class Document
      */
     public function table(array $headers): Table
     {
-        return new Table($this, $this->pdf, $this->cursorY, $this->contentWidth(), $this->marginLeft, $headers, $this->documentFont);
+        return new Table($this, $this->pdf, $this->cursorY, $this->contentWidth(), $this->marginLeft, $headers, $this->documentFont, $this->style);
     }
 
     // ── Output ───────────────────────────────────────────────────────────────

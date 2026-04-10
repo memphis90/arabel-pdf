@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Arabel\Pdf\Layout;
 
 use Arabel\Pdf\Document;
+use Arabel\Pdf\DocumentStyle;
 use Arabel\Pdf\Pdf;
 
 /**
@@ -24,34 +25,29 @@ use Arabel\Pdf\Pdf;
  */
 class Table
 {
-    private Document $doc;
-    private Pdf      $pdf;
-    private float    $cursorY;
-    private float    $contentWidth;
-    private float    $marginLeft;
-    private string   $documentFont;
-    private int      $colCount;
+    private Document      $doc;
+    private Pdf           $pdf;
+    private DocumentStyle $style;
+    private float         $cursorY;
+    private float         $contentWidth;
+    private float         $marginLeft;
+    private string        $documentFont;
+    private int           $colCount;
 
     /** @var float[] Column widths in mm */
     private array $colWidths;
 
-    private const ROW_H    = 7.0;
-    private const HEAD_H   = 8.0;
-    private const HEAD_BG  = [41, 98, 255];
-    private const HEAD_FG  = [255, 255, 255];
-    private const ROW_FG   = [60, 60, 60];
-    private const ALT_BG   = [245, 247, 255];
-
     private int $rowIndex = 0;
 
     public function __construct(
-        Document $doc,
-        Pdf      $pdf,
-        float    $cursorY,
-        float    $contentWidth,
-        float    $marginLeft,
-        array    $headers,
-        string   $documentFont
+        Document      $doc,
+        Pdf           $pdf,
+        float         $cursorY,
+        float         $contentWidth,
+        float         $marginLeft,
+        array         $headers,
+        string        $documentFont,
+        DocumentStyle $style
     ) {
         $this->doc          = $doc;
         $this->pdf          = $pdf;
@@ -59,6 +55,7 @@ class Table
         $this->contentWidth = $contentWidth;
         $this->marginLeft   = $marginLeft;
         $this->documentFont = $documentFont;
+        $this->style        = $style;
         $this->colCount     = count($headers);
         $this->colWidths    = array_fill(0, $this->colCount, $contentWidth / $this->colCount);
 
@@ -89,20 +86,21 @@ class Table
      */
     public function tr(array $cells): static
     {
+        $s     = $this->style;
         $isAlt = $this->rowIndex % 2 === 1;
 
         $this->pdf
-            ->setFont($this->documentFont, 10)
-            ->setFillColor(...($isAlt ? self::ALT_BG : [255, 255, 255]))
-            ->setTextColor(...self::ROW_FG)
+            ->setFont($this->documentFont, $s->pSize)
+            ->setFillColor(...($isAlt ? $s->tableAltBg : [255, 255, 255]))
+            ->setTextColor(...$s->tableRowFg)
             ->setXY($this->marginLeft, $this->cursorY);
 
         foreach ($cells as $i => $cell) {
             $ln = $i === $this->colCount - 1 ? 1 : 0;
-            $this->pdf->cell($this->colWidths[$i], self::ROW_H, (string) $cell, 1, $ln, 'L');
+            $this->pdf->cell($this->colWidths[$i], $s->tableRowH, (string) $cell, 1, $ln, 'L');
         }
 
-        $this->cursorY += self::ROW_H;
+        $this->cursorY += $s->tableRowH;
         $this->rowIndex++;
         return $this;
     }
@@ -121,17 +119,19 @@ class Table
 
     private function renderHead(array $headers): void
     {
+        $s = $this->style;
+
         $this->pdf
-            ->setFont($this->documentFont, 10)
-            ->setFillColor(...self::HEAD_BG)
-            ->setTextColor(...self::HEAD_FG)
+            ->setFont($this->documentFont, $s->pSize)
+            ->setFillColor(...$s->tableHeadBg)
+            ->setTextColor(...$s->tableHeadFg)
             ->setXY($this->marginLeft, $this->cursorY);
 
         foreach ($headers as $i => $header) {
             $ln = $i === $this->colCount - 1 ? 1 : 0;
-            $this->pdf->cell($this->colWidths[$i], self::HEAD_H, $header, 1, $ln, 'L');
+            $this->pdf->cell($this->colWidths[$i], $s->tableHeadH, $header, 1, $ln, 'L');
         }
 
-        $this->cursorY += self::HEAD_H;
+        $this->cursorY += $s->tableHeadH;
     }
 }

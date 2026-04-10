@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Arabel\Pdf\Layout;
 
 use Arabel\Pdf\Document;
+use Arabel\Pdf\DocumentStyle;
 use Arabel\Pdf\Pdf;
 
 /**
@@ -15,22 +16,24 @@ use Arabel\Pdf\Pdf;
  */
 class Row
 {
-    private Document $doc;
-    private Pdf      $pdf;
-    private float    $startY;
-    private float    $contentWidth;
-    private float    $marginLeft;
-    private string   $documentFont;
-    private float    $currentX;
-    private float    $maxH = 0.0;
+    private Document      $doc;
+    private Pdf           $pdf;
+    private DocumentStyle $style;
+    private float         $startY;
+    private float         $contentWidth;
+    private float         $marginLeft;
+    private string        $documentFont;
+    private float         $currentX;
+    private float         $maxH = 0.0;
 
     public function __construct(
-        Document $doc,
-        Pdf      $pdf,
-        float    $startY,
-        float    $contentWidth,
-        float    $marginLeft,
-        string   $documentFont
+        Document      $doc,
+        Pdf           $pdf,
+        float         $startY,
+        float         $contentWidth,
+        float         $marginLeft,
+        string        $documentFont,
+        DocumentStyle $style
     ) {
         $this->doc          = $doc;
         $this->pdf          = $pdf;
@@ -38,6 +41,7 @@ class Row
         $this->contentWidth = $contentWidth;
         $this->marginLeft   = $marginLeft;
         $this->documentFont = $documentFont;
+        $this->style        = $style;
         $this->currentX     = $marginLeft;
     }
 
@@ -50,7 +54,7 @@ class Row
     public function col(int $span): Col
     {
         $colW           = ($this->contentWidth / 12) * $span;
-        $col            = new Col($this, $this->pdf, $this->currentX, $this->startY, $colW, $this->documentFont);
+        $col            = new Col($this, $this->pdf, $this->currentX, $this->startY, $colW, $this->documentFont, $this->style);
         $this->currentX += $colW;
         return $col;
     }
