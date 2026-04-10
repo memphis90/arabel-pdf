@@ -1,0 +1,28 @@
+{
+    "name": "arabel/pdf",
+    "description": "Lightweight PHP 8.1+ PDF generation library. Zero dependencies.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["pdf", "generate", "php", "lightweight", "fpdf", "zero-dependencies"],
+    "authors": [
+        {
+            "name": "Arabel",
+            "homepage": "https://arabel.dev"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "ext-zlib": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Arabel\\Pdf\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Arabel\\Pdf\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable"
+}
