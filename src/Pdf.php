@@ -4,40 +4,67 @@ declare(strict_types=1);
 
 namespace Arabel\Pdf;
 
+use RuntimeException;
+
 class Pdf
 {
-    // ── Document state ──────────────────────────────────────────────────────
-    private array  $pages      = [];
-    private int    $pageCount  = 0;
-    private int    $currentPage = 0;
+    // ── Document state ───────────────────────────────────────────────────────
 
-    // ── PDF object tracking ──────────────────────────────────────────────────
-    private array  $objects    = [];   // objectId => content string
-    private int    $nextObjId  = 1;
+    /** @var array<int, array{stream: string, w: float, h: float}> */
+    private array $pages       = [];
+    private int   $pageCount   = 0;
+    private int   $currentPage = 0;
 
-    // ── Page defaults ────────────────────────────────────────────────────────
-    private float  $pageWidth  = 595.28;  // A4 in points
-    private float  $pageHeight = 841.89;
+    // ── PDF objects ──────────────────────────────────────────────────────────
 
-    // ── Current graphics state ───────────────────────────────────────────────
+    /** @var array<int, string> */
+    private array $objects = [];
+
+    // ── Default page size (A4 portrait, in points) ───────────────────────────
+
+    private float $defaultW = 595.28;
+    private float $defaultH = 841.89;
+
+    // ── Graphics state ───────────────────────────────────────────────────────
+
     private string $fontFamily = 'Helvetica';
     private float  $fontSize   = 12.0;
-    private array  $textColor  = [0, 0, 0];      // RGB 0-255
-    private array  $fillColor  = [255, 255, 255];
-    private array  $drawColor  = [0, 0, 0];
-    private float  $lineWidth  = 0.567;           // ~0.2mm
+    /** @var int[] */
+    private array $textColor = [0, 0, 0];
+    /** @var int[] */
+    private array $fillColor = [255, 255, 255];
+    /** @var int[] */
+    private array $drawColor = [0, 0, 0];
 
-    // ── Margins ──────────────────────────────────────────────────────────────
-    private float  $marginLeft   = 10.0;
-    private float  $marginTop    = 10.0;
-    private float  $marginRight  = 10.0;
-    private float  $marginBottom = 10.0;
+    // ── Margins (mm) ─────────────────────────────────────────────────────────
 
-    // ── Cursor ───────────────────────────────────────────────────────────────
-    private float  $x = 10.0;
-    private float  $y = 10.0;
+    private float $marginLeft   = 10.0;
+    private float $marginTop    = 10.0;
+    private float $marginRight  = 10.0;
+    private float $marginBottom = 10.0;
 
-    // ── Built-in core font widths (Helvetica, units: 1/1000 of point) ────────
+    // ── Cursor (mm) ──────────────────────────────────────────────────────────
+
+    private float $x = 10.0;
+    private float $y = 10.0;
+
+    // ── Image registry ───────────────────────────────────────────────────────
+
+    /**
+     * @var array<string, array{
+     *   alias: string, w: int, h: int, type: string,
+     *   colorSpace: string, data: string,
+     *   colors?: int
+     * }>
+     */
+    private array $images     = [];
+    private int   $imageCount = 0;
+
+    // ── Constants ────────────────────────────────────────────────────────────
+
+    private const MM_TO_PT = 2.8346;
+
+    /** Helvetica glyph widths in 1/1000 pt units. */
     private const HELVETICA_WIDTHS = [
         ' '=>278,'!'=>278,'"'=>355,'#'=>556,'$'=>556,'%'=>889,'&'=>667,"'"=>191,
         '('=>333,')'=>333,'*'=>389,'+'=>584,','=>278,'-'=>333,'.'=>278,'/'=>278,
@@ -53,9 +80,6 @@ class Pdf
         'x'=>500,'y'=>500,'z'=>444,'{'=>334,'|'=>260,'}'=>334,'~'=>584,
     ];
 
-    // ── Core fonts supported ─────────────────────────────────────────────────
-    private const CORE_FONTS = ['Helvetica', 'Times-Roman', 'Courier'];
-
     // ────────────────────────────────────────────────────────────────────────
     // Public API
     // ────────────────────────────────────────────────────────────────────────
@@ -67,11 +91,14 @@ class Pdf
      */
     public function addPage(string $orientation = 'P'): static
     {
+        [$w, $h] = strtoupper($orientation) === 'L'
+            ? [$this->defaultH, $this->defaultW]
+            : [$this->defaultW, $this->defaultH];
+
         $this->pageCount++;
         $this->currentPage = $this->pageCount;
-        $this->pages[$this->currentPage] = '';
+        $this->pages[$this->currentPage] = ['stream' => '', 'w' => $w, 'h' => $h];
 
-        // Reset cursor to top-left margin
         $this->x = $this->marginLeft;
         $this->y = $this->marginTop;
 
@@ -79,14 +106,16 @@ class Pdf
     }
 
     /**
-     * Set the active font. Only core PDF fonts are supported at this stage.
+     * Set the active font. Only core PDF fonts are supported in v1.
      *
      * @param string $family 'Helvetica' | 'Times-Roman' | 'Courier'
      * @param float  $size   Font size in points (e.g. 12)
-     * @param string $style  Reserved for future use ('B', 'I', 'BI')
+     * @param string $style  Reserved for future use: 'B', 'I', 'BI'
      */
     public function setFont(string $family, float $size, string $style = ''): static
     {
+        unset($style); // reserved — bold/italic coming in a future version
+
         $this->fontFamily = $family;
         $this->fontSize   = $size;
         return $this;
@@ -106,7 +135,7 @@ class Pdf
     }
 
     /**
-     * Set the fill color for cells and rectangles using RGB values (0–255).
+     * Set the fill color for cells and rectangles (0–255 per channel).
      *
      * @param int $r Red   (0–255)
      * @param int $g Green (0–255)
@@ -119,7 +148,7 @@ class Pdf
     }
 
     /**
-     * Set the stroke/border color for lines and rectangles using RGB values (0–255).
+     * Set the stroke/border color for lines and rectangles (0–255 per channel).
      *
      * @param int $r Red   (0–255)
      * @param int $g Green (0–255)
@@ -138,13 +167,12 @@ class Pdf
      */
     public function setLineWidth(float $width): static
     {
-        $this->lineWidth = $width;
         $this->writePage(sprintf("%.3f w\n", $width));
         return $this;
     }
 
     /**
-     * Set the page margins. Right margin defaults to the same as left if omitted.
+     * Set page margins. Right margin defaults to left if omitted.
      *
      * @param float $left   Left margin in mm
      * @param float $top    Top margin in mm
@@ -179,7 +207,20 @@ class Pdf
     /** Current cursor Y position in mm. */
     public function getY(): float { return $this->y; }
 
-    // ── Text at absolute position ─────────────────────────────────────────────
+    /**
+     * Get the current margin values in mm.
+     *
+     * @return array{left: float, top: float, right: float, bottom: float}
+     */
+    public function getMargins(): array
+    {
+        return [
+            'left'   => $this->marginLeft,
+            'top'    => $this->marginTop,
+            'right'  => $this->marginRight,
+            'bottom' => $this->marginBottom,
+        ];
+    }
 
     /**
      * Print a string at an absolute position. Does not advance the cursor.
@@ -193,25 +234,18 @@ class Pdf
     {
         $this->assertPageOpen();
 
-        $pdfY  = $this->pageHeight - ($y * $this->scaleFactor()) - $this->fontSize;
-        $pdfX  = $x * $this->scaleFactor();
-        $color = $this->colorOp($this->textColor, 'rg');
-
-        $escaped = $this->escapeText($text);
+        $pageH = $this->currentPageHeight();
+        $pdfX  = $x * self::MM_TO_PT;
+        $pdfY  = $pageH - ($y * self::MM_TO_PT) - $this->fontSize;
+        $col   = $this->colorOp($this->textColor, 'rg');
+        $esc   = $this->escapeText($text);
 
         $this->writePage(
-            "BT\n" .
-            "{$color}\n" .
-            "/{$this->fontAlias()} {$this->fontSize} Tf\n" .
-            "{$pdfX} {$pdfY} Td\n" .
-            "({$escaped}) Tj\n" .
-            "ET\n"
+            "BT\n$col\n/F1 $this->fontSize Tf\n$pdfX $pdfY Td\n($esc) Tj\nET\n"
         );
 
         return $this;
     }
-
-    // ── Cell ──────────────────────────────────────────────────────────────────
 
     /**
      * Print a rectangular cell, optionally with text, border, and fill.
@@ -220,66 +254,54 @@ class Pdf
      * @param float      $w      Cell width in mm
      * @param float      $h      Cell height in mm
      * @param string     $text   UTF-8 text to print inside the cell
-     * @param int|string $border 0 = no border, 1 = full border (partial borders coming in a future version)
-     * @param int        $ln     Cursor advance: 0 = right, 1 = next line, 2 = below (same X)
+     * @param int|string $border 0 = no border | 1 = full border
+     * @param int        $ln     0 = advance right | 1 = next line | 2 = below
      * @param string     $align  Text alignment: 'L' left | 'C' center | 'R' right
      */
     public function cell(
-        float  $w,
-        float  $h       = 0,
-        string $text    = '',
+        float      $w,
+        float      $h      = 0,
+        string     $text   = '',
         int|string $border = 0,
-        int    $ln      = 0,
-        string $align   = 'L'
+        int        $ln     = 0,
+        string     $align  = 'L'
     ): static {
         $this->assertPageOpen();
 
-        $sf   = $this->scaleFactor();
-        $x    = $this->x * $sf;
-        $y    = $this->pageHeight - $this->y * $sf - $h * $sf;
-        $w_pt = $w * $sf;
-        $h_pt = $h * $sf;
-
-        $stream = '';
+        $pageH = $this->currentPageHeight();
+        $sf    = self::MM_TO_PT;
+        $px    = $this->x * $sf;
+        $py    = $pageH - $this->y * $sf - $h * $sf;
+        $pw    = $w * $sf;
+        $ph    = $h * $sf;
+        $out   = '';
 
         // Background fill
         if ($this->fillColor !== [255, 255, 255]) {
-            $fc = $this->colorOp($this->fillColor, 'rg');
-            $stream .= "{$fc}\n{$x} {$y} {$w_pt} {$h_pt} re f\n";
+            $out .= $this->colorOp($this->fillColor, 'rg') . "\n$px $py $pw $ph re f\n";
         }
 
         // Border
         if ($border) {
-            $dc = $this->colorOp($this->drawColor, 'RG');
-            $stream .= "{$dc}\n{$x} {$y} {$w_pt} {$h_pt} re S\n";
+            $out .= $this->colorOp($this->drawColor, 'RG') . "\n$px $py $pw $ph re S\n";
         }
 
         // Text
         if ($text !== '') {
-            $color   = $this->colorOp($this->textColor, 'rg');
-            $escaped = $this->escapeText($text);
-
-            // Horizontal alignment
-            $textW  = $this->getStringWidth($text);
-            $textX  = match ($align) {
-                'C'     => $this->x + ($w - $textW) / 2,
-                'R'     => $this->x + $w - $textW - 1,
-                default => $this->x + 1,
+            $textW = $this->getStringWidth($text);
+            $tx    = match ($align) {
+                'C'     => ($this->x + ($w - $textW) / 2) * $sf,
+                'R'     => ($this->x + $w - $textW - 1) * $sf,
+                default => ($this->x + 1) * $sf,
             };
+            $ty  = $py + ($ph - $this->fontSize) / 2;
+            $col = $this->colorOp($this->textColor, 'rg');
+            $esc = $this->escapeText($text);
 
-            $pdfTX = $textX * $sf;
-            $pdfTY = $y + ($h_pt - $this->fontSize) / 2;
-
-            $stream .=
-                "BT\n" .
-                "{$color}\n" .
-                "/{$this->fontAlias()} {$this->fontSize} Tf\n" .
-                "{$pdfTX} {$pdfTY} Td\n" .
-                "({$escaped}) Tj\n" .
-                "ET\n";
+            $out .= "BT\n$col\n/F1 $this->fontSize Tf\n$tx $ty Td\n($esc) Tj\nET\n";
         }
 
-        $this->writePage($stream);
+        $this->writePage($out);
 
         // Advance cursor
         if ($ln === 1) {
@@ -294,13 +316,11 @@ class Pdf
         return $this;
     }
 
-    // ── Shapes ────────────────────────────────────────────────────────────────
-
     /**
      * Draw a rectangle.
      *
-     * @param float  $x     X coordinate of the top-left corner in mm
-     * @param float  $y     Y coordinate of the top-left corner in mm
+     * @param float  $x     X of top-left corner in mm
+     * @param float  $y     Y of top-left corner in mm
      * @param float  $w     Width in mm
      * @param float  $h     Height in mm
      * @param string $style '' = stroke only | 'F' = fill only | 'DF'/'FD' = fill + stroke
@@ -309,27 +329,25 @@ class Pdf
     {
         $this->assertPageOpen();
 
-        $sf   = $this->scaleFactor();
-        $pdfX = $x * $sf;
-        $pdfY = $this->pageHeight - ($y * $sf) - ($h * $sf);
-        $pdfW = $w * $sf;
-        $pdfH = $h * $sf;
-
-        $op = match (strtoupper($style)) {
-            'F'  => 'f',
+        $pageH = $this->currentPageHeight();
+        $sf    = self::MM_TO_PT;
+        $px    = $x * $sf;
+        $py    = $pageH - ($y * $sf) - ($h * $sf);
+        $pw    = $w * $sf;
+        $ph    = $h * $sf;
+        $op    = match (strtoupper($style)) {
+            'F'        => 'f',
             'DF', 'FD' => 'B',
             default    => 'S',
         };
 
-        $stream = '';
+        $out = '';
         if (str_contains('FDF', strtoupper($style))) {
-            $fc = $this->colorOp($this->fillColor, 'rg');
-            $stream .= "{$fc}\n";
+            $out .= $this->colorOp($this->fillColor, 'rg') . "\n";
         }
-        $dc = $this->colorOp($this->drawColor, 'RG');
-        $stream .= "{$dc}\n{$pdfX} {$pdfY} {$pdfW} {$pdfH} re {$op}\n";
+        $out .= $this->colorOp($this->drawColor, 'RG') . "\n$px $py $pw $ph re $op\n";
 
-        $this->writePage($stream);
+        $this->writePage($out);
         return $this;
     }
 
@@ -345,24 +363,84 @@ class Pdf
     {
         $this->assertPageOpen();
 
-        $sf = $this->scaleFactor();
-        $dc = $this->colorOp($this->drawColor, 'RG');
+        $pageH = $this->currentPageHeight();
+        $sf    = self::MM_TO_PT;
+        $col   = $this->colorOp($this->drawColor, 'RG');
 
         $this->writePage(sprintf(
-            "%s\n%.3f %.3f m %.3f %.3f l S\n",
-            $dc,
-            $x1 * $sf, $this->pageHeight - $y1 * $sf,
-            $x2 * $sf, $this->pageHeight - $y2 * $sf
+            "$col\n%.3f %.3f m %.3f %.3f l S\n",
+            $x1 * $sf, $pageH - $y1 * $sf,
+            $x2 * $sf, $pageH - $y2 * $sf
         ));
 
         return $this;
     }
 
-    // ── String width helper ───────────────────────────────────────────────────
+    /**
+     * Embed an image (JPEG or PNG) at the given position.
+     *
+     * If only $w or only $h is provided, the other dimension is calculated
+     * to preserve the aspect ratio. If both are 0, the image is placed at
+     * its natural size at 72 dpi.
+     *
+     * Supported formats:
+     * - JPEG: any color mode
+     * - PNG: 8-bit RGB or Grayscale without alpha channel
+     *
+     * @param string $file Path to the image file (.jpg, .jpeg, .png)
+     * @param float  $x    X coordinate in mm from the left edge
+     * @param float  $y    Y coordinate in mm from the top edge
+     * @param float  $w    Display width in mm  (0 = auto)
+     * @param float  $h    Display height in mm (0 = auto)
+     */
+    public function image(string $file, float $x, float $y, float $w = 0.0, float $h = 0.0): static
+    {
+        $this->assertPageOpen();
+
+        $key = realpath($file) ?: $file;
+
+        if (!isset($this->images[$key])) {
+            $ext  = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+            $info = match ($ext) {
+                'jpg', 'jpeg' => $this->parseJpeg($file),
+                'png'         => $this->parsePng($file),
+                default       => throw new RuntimeException("Unsupported image format: $ext (use jpg or png)"),
+            };
+            $this->imageCount++;
+            $info['alias']   = 'Im' . $this->imageCount;
+            $this->images[$key] = $info;
+        }
+
+        $img  = $this->images[$key];
+        $imgW = $img['w'];
+        $imgH = $img['h'];
+
+        // Resolve display dimensions, preserving aspect ratio when needed
+        if ($w === 0.0 && $h === 0.0) {
+            $w = $imgW * 25.4 / 72;  // pixels @ 72 dpi → mm
+            $h = $imgH * 25.4 / 72;
+        } elseif ($w === 0.0) {
+            $w = $h * $imgW / $imgH;
+        } elseif ($h === 0.0) {
+            $h = $w * $imgH / $imgW;
+        }
+
+        $pageH = $this->currentPageHeight();
+        $sf    = self::MM_TO_PT;
+        $pdfX  = $x * $sf;
+        $pdfY  = $pageH - ($y * $sf) - ($h * $sf);
+        $pdfW  = $w * $sf;
+        $pdfH  = $h * $sf;
+        $alias = $img['alias'];
+
+        $this->writePage("q $pdfW 0 0 $pdfH $pdfX $pdfY cm /$alias Do Q\n");
+
+        return $this;
+    }
 
     /**
      * Calculate the rendered width of a string with the current font and size.
-     * Useful for manual alignment or before calling cell().
+     * Useful for manual alignment before calling cell() or text().
      *
      * @param  string $text UTF-8 string
      * @return float  Width in mm
@@ -376,44 +454,40 @@ class Pdf
         return $w * $this->fontSize / 1000;
     }
 
-    // ── Output ────────────────────────────────────────────────────────────────
-
     /**
      * Finalize and output the PDF document.
      *
-     * @param string $name Filename used for download or file save (e.g. 'invoice.pdf')
+     * @param string $name Filename used for download or file path when dest = 'F'
      * @param string $dest Output destination:
-     *                     'D' = force download (default)
-     *                     'I' = inline in browser
-     *                     'F' = save to file (use $name as path)
-     *                     'S' = return raw PDF string
-     * @return string Raw PDF bytes (always returned regardless of $dest)
+     *                     'D' = force browser download (default)
+     *                     'I' = open inline in browser
+     *                     'F' = save to file ($name = full path)
+     *                     'S' = return raw PDF bytes
+     * @return string Raw PDF bytes (always returned, regardless of $dest)
      */
     public function output(string $name = 'document.pdf', string $dest = 'D'): string
     {
         $pdf = $this->buildPdf();
 
-        return match (strtoupper($dest)) {
-            'S' => $pdf,
-            'F' => (function () use ($pdf, $name) {
-                file_put_contents($name, $pdf);
-                return $pdf;
-            })(),
-            'I' => (function () use ($pdf, $name) {
-                header('Content-Type: application/pdf');
-                header("Content-Disposition: inline; filename=\"{$name}\"");
-                header('Content-Length: ' . strlen($pdf));
-                echo $pdf;
-                return $pdf;
-            })(),
-            default => (function () use ($pdf, $name) {  // 'D'
-                header('Content-Type: application/pdf');
-                header("Content-Disposition: attachment; filename=\"{$name}\"");
-                header('Content-Length: ' . strlen($pdf));
-                echo $pdf;
-                return $pdf;
-            })(),
-        };
+        $dest = strtoupper($dest);
+
+        if ($dest === 'S') {
+            return $pdf;
+        }
+
+        if ($dest === 'F') {
+            file_put_contents($name, $pdf);
+            return $pdf;
+        }
+
+        // 'D' (download) or 'I' (inline)
+        $disposition = $dest === 'I' ? 'inline' : 'attachment';
+        header('Content-Type: application/pdf');
+        header("Content-Disposition: $disposition; filename=\"$name\"");
+        header('Content-Length: ' . strlen($pdf));
+        echo $pdf;
+
+        return $pdf;
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -422,75 +496,114 @@ class Pdf
 
     private function buildPdf(): string
     {
-        // Object 1 — Catalog
-        $this->addObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        $nextId = 1;
 
-        // Object 2 — Pages (placeholder, filled after we know page object IDs)
-        $pageObjIds = [];
-        $firstFreeId = 3;
+        // Reserve obj 1 (Catalog) and obj 2 (Pages)
+        $catalogId = $nextId++;  // 1
+        $pagesId   = $nextId++;  // 2
 
-        // Object 3 — Font
-        $fontObjId = $firstFreeId++;
-        $this->addObject($fontObjId,
-            "<< /Type /Font /Subtype /Type1 /BaseFont /{$this->fontFamily} " .
-            "/Encoding /WinAnsiEncoding >>"
+        // Font object
+        $fontId = $nextId++;
+        $this->addObject($fontId,
+            "<< /Type /Font /Subtype /Type1 /BaseFont /$this->fontFamily /Encoding /WinAnsiEncoding >>"
         );
 
-        // One object per page
-        $contentObjIds = [];
-        foreach ($this->pages as $pageNum => $stream) {
-            $contentId = $firstFreeId++;
-            $contentObjIds[$pageNum] = $contentId;
+        // Image XObjects
+        $imageObjMap = [];  // alias => PDF object ID
+        foreach ($this->images as $img) {
+            $imgId = $nextId++;
+            $imageObjMap[$img['alias']] = $imgId;
+            $len   = strlen($img['data']);
 
-            $compressed = gzcompress($stream, 6);
-            $len = strlen($compressed);
+            if ($img['type'] === 'jpeg') {
+                $this->addObject($imgId,
+                    "<< /Type /XObject /Subtype /Image " .
+                    "/Width $img[w] /Height $img[h] " .
+                    "/ColorSpace /$img[colorSpace] /BitsPerComponent 8 " .
+                    "/Filter /DCTDecode /Length $len >>\n" .
+                    "stream\n" . $img['data'] . "\nendstream"
+                );
+            } else {
+                // PNG — reuse the already-deflated IDAT data with PNG predictor
+                $colors = $img['colors'];
+                $imgW   = $img['w'];
+                $this->addObject($imgId,
+                    "<< /Type /XObject /Subtype /Image " .
+                    "/Width $img[w] /Height $img[h] " .
+                    "/ColorSpace /$img[colorSpace] /BitsPerComponent 8 " .
+                    "/Filter /FlateDecode " .
+                    "/DecodeParms << /Predictor 15 /Colors $colors /BitsPerComponent 8 /Columns $imgW >> " .
+                    "/Length $len >>\n" .
+                    "stream\n" . $img['data'] . "\nendstream"
+                );
+            }
+        }
+
+        // Page content + page objects
+        $pageObjIds = [];
+        foreach ($this->pages as $pageNum => $page) {
+            $contentId = $nextId++;
+
+            $compressed = gzcompress($page['stream'], 6);
+            $len        = strlen($compressed);
             $this->addObject($contentId,
-                "<< /Filter /FlateDecode /Length {$len} >>\nstream\n" .
-                $compressed .
-                "\nendstream"
+                "<< /Filter /FlateDecode /Length $len >>\nstream\n" .
+                $compressed . "\nendstream"
             );
 
-            $pageId = $firstFreeId++;
+            // Resources: fonts + image XObjects
+            $fontRes  = "/Font << /F1 $fontId 0 R >>";
+            $xobjRes  = '';
+            if (!empty($imageObjMap)) {
+                $parts = [];
+                foreach ($imageObjMap as $alias => $oid) {
+                    $parts[] = "/$alias $oid 0 R";
+                }
+                $xobjRes = ' /XObject << ' . implode(' ', $parts) . ' >>';
+            }
+
+            $pageId            = $nextId++;
             $pageObjIds[$pageNum] = $pageId;
+            $pw = $page['w'];
+            $ph = $page['h'];
             $this->addObject($pageId,
-                "<< /Type /Page /Parent 2 0 R " .
-                "/MediaBox [0 0 {$this->pageWidth} {$this->pageHeight}] " .
-                "/Contents {$contentId} 0 R " .
-                "/Resources << /Font << /F1 {$fontObjId} 0 R >> >> >>"
+                "<< /Type /Page /Parent $pagesId 0 R " .
+                "/MediaBox [0 0 $pw $ph] " .
+                "/Contents $contentId 0 R " .
+                "/Resources << $fontRes$xobjRes >> >>"
             );
         }
 
-        // Object 2 — Pages dictionary (now we have IDs)
-        $kids = implode(' ', array_map(fn($id) => "{$id} 0 R", $pageObjIds));
-        $this->addObject(2,
-            "<< /Type /Pages /Kids [{$kids}] /Count {$this->pageCount} >>"
-        );
+        // Pages dictionary
+        $kids = implode(' ', array_map(fn ($id) => "$id 0 R", $pageObjIds));
+        $this->addObject($pagesId, "<< /Type /Pages /Kids [$kids] /Count $this->pageCount >>");
 
-        // Serialize
-        $out    = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
+        // Catalog
+        $this->addObject($catalogId, "<< /Type /Catalog /Pages $pagesId 0 R >>");
+
+        // ── Serialize ────────────────────────────────────────────────────────
+        $out     = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
         $offsets = [];
 
-        // Sort objects by ID
         ksort($this->objects);
-
         foreach ($this->objects as $id => $content) {
             $offsets[$id] = strlen($out);
-            $out .= "{$id} 0 obj\n{$content}\nendobj\n";
+            $out .= "$id 0 obj\n$content\nendobj\n";
         }
 
         // Cross-reference table
         $xrefOffset = strlen($out);
         $objCount   = count($this->objects) + 1;
-        $out .= "xref\n0 {$objCount}\n";
+        $out .= "xref\n0 $objCount\n";
         $out .= "0000000000 65535 f \n";
 
         ksort($offsets);
         foreach ($offsets as $offset) {
-            $out .= str_pad((string)$offset, 10, '0', STR_PAD_LEFT) . " 00000 n \n";
+            $out .= str_pad((string) $offset, 10, '0', STR_PAD_LEFT) . " 00000 n \n";
         }
 
-        $out .= "trailer\n<< /Size {$objCount} /Root 1 0 R >>\n";
-        $out .= "startxref\n{$xrefOffset}\n%%EOF\n";
+        $out .= "trailer\n<< /Size $objCount /Root $catalogId 0 R >>\n";
+        $out .= "startxref\n$xrefOffset\n%%EOF\n";
 
         return $out;
     }
@@ -502,43 +615,134 @@ class Pdf
 
     private function writePage(string $content): void
     {
-        $this->pages[$this->currentPage] ??= '';
-        $this->pages[$this->currentPage] .= $content;
+        $this->pages[$this->currentPage]['stream'] .= $content;
+    }
+
+    private function currentPageHeight(): float
+    {
+        return $this->pages[$this->currentPage]['h'];
     }
 
     private function assertPageOpen(): void
     {
         if ($this->currentPage === 0) {
-            throw new \RuntimeException('No page open. Call addPage() first.');
+            throw new RuntimeException('No page open. Call addPage() first.');
         }
-    }
-
-    private function scaleFactor(): float
-    {
-        // User units = mm → points (1 mm = 2.8346 pt)
-        return 2.8346;
-    }
-
-    private function fontAlias(): string
-    {
-        return 'F1';
     }
 
     private function colorOp(array $rgb, string $op): string
     {
-        return sprintf('%.3f %.3f %.3f %s',
-            $rgb[0] / 255, $rgb[1] / 255, $rgb[2] / 255, $op
-        );
+        return sprintf('%.3f %.3f %.3f %s', $rgb[0] / 255, $rgb[1] / 255, $rgb[2] / 255, $op);
     }
 
     private function escapeText(string $text): string
     {
-        // PDF WinAnsiEncoding expects Windows-1252, not UTF-8
+        // PDF WinAnsiEncoding expects Windows-1252, not raw UTF-8 bytes
         $converted = iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
         if ($converted !== false) {
             $text = $converted;
         }
-
         return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $text);
+    }
+
+    // ── Image parsers ────────────────────────────────────────────────────────
+
+    /**
+     * @return array{w: int, h: int, colorSpace: string, data: string, type: string}
+     * @throws RuntimeException
+     */
+    private function parseJpeg(string $file): array
+    {
+        $data = file_get_contents($file);
+        if ($data === false) {
+            throw new RuntimeException("Cannot read file: $file");
+        }
+
+        $len = strlen($data);
+        $i   = 2;
+
+        while ($i + 4 < $len) {
+            if (ord($data[$i]) !== 0xFF) {
+                throw new RuntimeException("Invalid JPEG structure at offset $i in: $file");
+            }
+
+            $marker = (ord($data[$i]) << 8) | ord($data[$i + 1]);
+
+            // SOF markers carry image dimensions: C0–C3, C5–C7, C9–CB
+            if (($marker >= 0xFFC0 && $marker <= 0xFFC3) || ($marker >= 0xFFC5 && $marker <= 0xFFC7)) {
+                $h        = (ord($data[$i + 5]) << 8) | ord($data[$i + 6]);
+                $w        = (ord($data[$i + 7]) << 8) | ord($data[$i + 8]);
+                $channels = ord($data[$i + 9]);
+                $cs       = $channels === 1 ? 'DeviceGray' : 'DeviceRGB';
+
+                return ['w' => $w, 'h' => $h, 'colorSpace' => $cs, 'data' => $data, 'type' => 'jpeg'];
+            }
+
+            $segLen = (ord($data[$i + 2]) << 8) | ord($data[$i + 3]);
+            $i     += 2 + $segLen;
+        }
+
+        throw new RuntimeException("Could not find SOF marker in JPEG: $file");
+    }
+
+    /**
+     * Supports 8-bit RGB (color type 2) and Grayscale (color type 0) without alpha.
+     *
+     * @return array{w: int, h: int, colors: int, colorSpace: string, data: string, type: string}
+     * @throws RuntimeException
+     */
+    private function parsePng(string $file): array
+    {
+        $data = file_get_contents($file);
+        if ($data === false) {
+            throw new RuntimeException("Cannot read file: $file");
+        }
+
+        if (!str_starts_with($data, "\x89PNG\r\n\x1a\n")) {
+            throw new RuntimeException("Not a valid PNG file: $file");
+        }
+
+        $w         = (int) unpack('N', substr($data, 16, 4))[1];
+        $h         = (int) unpack('N', substr($data, 20, 4))[1];
+        $bitDepth  = ord($data[24]);
+        $colorType = ord($data[25]);
+
+        if ($bitDepth !== 8) {
+            throw new RuntimeException("Only 8-bit PNG is supported (got " . $bitDepth . "-bit): $file");
+        }
+
+        [$colors, $colorSpace] = match ($colorType) {
+            0 => [1, 'DeviceGray'],
+            2 => [3, 'DeviceRGB'],
+            default => throw new RuntimeException(
+                "Unsupported PNG color type $colorType in: $file\n" .
+                "Supported: 0 (Grayscale), 2 (RGB). Convert to RGB PNG without transparency."
+            ),
+        };
+
+        // Concatenate all IDAT chunks — this IS the zlib/FlateDecode stream
+        $idat = '';
+        $pos  = 8;
+        while ($pos + 12 <= strlen($data)) {
+            $chunkLen  = (int) unpack('N', substr($data, $pos, 4))[1];
+            $chunkType = substr($data, $pos + 4, 4);
+
+            if ($chunkType === 'IDAT') {
+                $idat .= substr($data, $pos + 8, $chunkLen);
+            } elseif ($chunkType === 'IEND') {
+                break;
+            }
+
+            $pos += 12 + $chunkLen;
+        }
+
+        return [
+            'w'          => $w,
+            'h'          => $h,
+            'colors'     => $colors,
+            'colorSpace' => $colorSpace,
+            'data'       => $idat,
+            'type'       => 'png',
+        ];
     }
 }
