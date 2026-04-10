@@ -1,1 +1,15 @@
-.idea
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Composer
+/vendor/
+composer.lock
+
+# Test output
+/tests/output/*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
