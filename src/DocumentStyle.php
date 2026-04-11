@@ -10,11 +10,15 @@ namespace Arabel\Pdf;
  * All color values are [r, g, b] arrays (0–255 per channel).
  * All size values are in points (pt), spacing values in millimetres (mm).
  *
- * Usage:
+ * Usage — fluent helpers (recommended):
  *   $style = new DocumentStyle();
- *   $style->h1Color     = [200, 0, 50];
+ *   $style->h1(22, [15, 55, 120], 'B', 12)
+ *         ->h2(12, [15, 55, 120], 'B', 8)
+ *         ->p(9,  [60, 60, 60],   '',  5.5);
+ *
+ * Usage — direct properties (also supported):
+ *   $style->h1Color = [200, 0, 50];
  *   $style->tableHeadBg = [0, 120, 90];
- *   $doc = new Document(style: $style);
  */
 class DocumentStyle
 {
@@ -39,6 +43,62 @@ class DocumentStyle
     public array  $pColor   = [100, 100, 100];
     public float  $pSpacing = 7.0;
     public string $pStyle   = '';
+
+    // ── Fluent heading/paragraph configurators ────────────────────────────────
+
+    /**
+     * Configure h1 style in one call.
+     *
+     * @param int[]  $color   [r, g, b]
+     * @param string $style   '' | 'B' | 'I' | 'BI'
+     * @param float  $spacing mm advanced after the element
+     */
+    public function h1(float $size, array $color = [], string $style = 'B', float $spacing = 14.0): static
+    {
+        $this->h1Size    = $size;
+        $this->h1Spacing = $spacing;
+        $this->h1Style   = $style;
+        if ($color !== []) {
+            $this->h1Color = $color;
+        }
+        return $this;
+    }
+
+    /**
+     * Configure h2 style in one call.
+     *
+     * @param int[]  $color   [r, g, b]
+     * @param string $style   '' | 'B' | 'I' | 'BI'
+     * @param float  $spacing mm advanced after the element
+     */
+    public function h2(float $size, array $color = [], string $style = '', float $spacing = 10.0): static
+    {
+        $this->h2Size    = $size;
+        $this->h2Spacing = $spacing;
+        $this->h2Style   = $style;
+        if ($color !== []) {
+            $this->h2Color = $color;
+        }
+        return $this;
+    }
+
+    /**
+     * Configure paragraph style in one call.
+     *
+     * @param int[]  $color   [r, g, b]
+     * @param string $style   '' | 'B' | 'I' | 'BI'
+     * @param float  $spacing mm advanced after the element
+     */
+    public function p(float $size, array $color = [], string $style = '', float $spacing = 7.0): static
+    {
+        $this->pSize    = $size;
+        $this->pSpacing = $spacing;
+        $this->pStyle   = $style;
+        if ($color !== []) {
+            $this->pColor = $color;
+        }
+        return $this;
+    }
 
     // ── Horizontal rule ──────────────────────────────────────────────────────
 

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Arabel\Pdf;
 
+use Arabel\Pdf\Layout\Footer;
+use Arabel\Pdf\Layout\Header;
+use Arabel\Pdf\Layout\Panel;
 use Arabel\Pdf\Layout\Row;
 use Arabel\Pdf\Layout\Table;
 
@@ -25,10 +28,27 @@ class Document
     private float $marginLeft   = 15.0;
     private float $marginTop    = 15.0;
     private float $marginRight  = 15.0;
-    private float $pageW        = 210.0; // A4 portrait width in mm
+    private float $marginBottom = 15.0;
+    private float $pageW        = 210.0;
+    private float $pageH        = 297.0; // A4 portrait height in mm
 
     /** Current Y cursor in mm from page top. */
     private float $cursorY = 15.0;
+
+    /** Current page number (1-based). */
+    private int $pageNumber = 0;
+
+    /** Orientation of the current page — reused on automatic page breaks. */
+    private string $currentOrientation = 'P';
+
+    /** Header name used on the current page — reused on automatic page breaks. */
+    private string|false $currentHeaderName = false;
+
+    /** @var Header[] Registered headers keyed by name */
+    private array $headers = [];
+
+    /** @var Footer[] Registered footers keyed by name */
+    private array $footers = [];
 
     public function __construct(string $font = '', ?DocumentStyle $style = null)
     {
@@ -41,18 +61,95 @@ class Document
     // ── Page ─────────────────────────────────────────────────────────────────
 
     /**
-     * Add a new page and reset the cursor to the top margin.
+     * Add a new page and reset the cursor below the header (if any).
      *
-     * @param string $orientation 'P' portrait (default) | 'L' landscape
+     * @param string       $orientation 'P' portrait (default) | 'L' landscape
+     * @param string|false $header      Header name to apply, false = none.
+     *                                  Defaults to 'default' if registered.
      */
-    public function addPage(string $orientation = 'P'): static
+    public function addPage(string $orientation = 'P', string|false|null $header = null): static
     {
-        $this->pdf->addPage($orientation);
+        // Render footer on the current page before opening a new one
+        if ($this->pageNumber > 0) {
+            $this->renderFooter('default');
+        }
 
-        $this->pageW   = strtoupper($orientation) === 'L' ? 297.0 : 210.0;
-        $this->cursorY = $this->marginTop;
+        $this->pdf->addPage($orientation);
+        $this->pageNumber++;
+
+        $this->currentOrientation = strtoupper($orientation);
+        $this->pageW = $this->currentOrientation === 'L' ? 297.0 : 210.0;
+        $this->pageH = $this->currentOrientation === 'L' ? 210.0 : 297.0;
+
+        // Determine which header to apply
+        $headerName = $header;
+        if ($headerName === null) {
+            $headerName = isset($this->headers['default']) ? 'default' : false;
+        }
+
+        if ($headerName !== false && isset($this->headers[$headerName])) {
+            $consumed      = $this->headers[$headerName]->render($this->pdf, $this->documentFont, $this->pageW, $this->marginLeft);
+            $this->cursorY = $consumed + $this->marginTop;
+            $this->currentHeaderName = $headerName;
+        } else {
+            $this->cursorY           = $this->marginTop;
+            $this->currentHeaderName = false;
+        }
 
         return $this;
+    }
+
+    // ── Header / Footer registration ─────────────────────────────────────────
+
+    /**
+     * Register a page header by name.
+     *
+     * The 'default' header is applied automatically to every addPage() call.
+     * Named headers are applied explicitly: $doc->addPage('P', 'allegato').
+     *
+     * Multiple headers can be registered:
+     *
+     *   $doc->setHeader()                           // name = 'default'
+     *       ->bg([15, 55, 120])
+     *       ->fg([255, 255, 255])
+     *       ->left('ARABEL SRL', 'Software & Digital Products')
+     *       ->right('FATTURA', '# INV-2026-0042')
+     *       ->height(22);
+     *
+     *   $doc->setHeader('allegato')
+     *       ->bg([15, 55, 120])
+     *       ->fg([255, 255, 255])
+     *       ->left('ALLEGATO A', 'Fattura INV-2026-0042');
+     *
+     *   $doc->addPage();                // → 'default' header
+     *   $doc->addPage('P', 'allegato'); // → 'allegato' header
+     *   $doc->addPage('P', false);      // → no header
+     */
+    public function setHeader(string $name = 'default'): Header
+    {
+        $header = new Header();
+        $this->headers[$name] = $header;
+        return $header;
+    }
+
+    /**
+     * Register a page footer by name.
+     *
+     * The 'default' footer is rendered automatically on every page.
+     * Use {page} in any text field to insert the current page number.
+     *
+     *   $doc->setFooter()
+     *       ->left('Arabel Srl — P.IVA IT09876543210')
+     *       ->right('Pagina {page}');
+     *
+     *   $doc->setFooter('allegato')
+     *       ->center('ALLEGATO A  —  Pagina {page}');
+     */
+    public function setFooter(string $name = 'default'): Footer
+    {
+        $footer = new Footer();
+        $this->footers[$name] = $footer;
+        return $footer;
     }
 
     // ── Typography ───────────────────────────────────────────────────────────
@@ -61,10 +158,9 @@ class Document
     public function h1(string $text): static
     {
         $s = $this->style;
-        $this->pdf
-            ->setFont($this->documentFont, $s->h1Size, $s->h1Style)
-            ->setTextColor(...$s->h1Color);
-
+        $this->pdf->setFont($this->documentFont, $s->h1Size, $s->h1Style);
+        $this->checkPageBreak($this->pdf->calcWrappedHeight($text, $this->contentWidth(), $s->h1Spacing));
+        $this->pdf->setTextColor(...$s->h1Color);
         $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->h1Spacing);
         return $this;
     }
@@ -73,10 +169,9 @@ class Document
     public function h2(string $text): static
     {
         $s = $this->style;
-        $this->pdf
-            ->setFont($this->documentFont, $s->h2Size, $s->h2Style)
-            ->setTextColor(...$s->h2Color);
-
+        $this->pdf->setFont($this->documentFont, $s->h2Size, $s->h2Style);
+        $this->checkPageBreak($this->pdf->calcWrappedHeight($text, $this->contentWidth(), $s->h2Spacing));
+        $this->pdf->setTextColor(...$s->h2Color);
         $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->h2Spacing);
         return $this;
     }
@@ -85,10 +180,9 @@ class Document
     public function p(string $text): static
     {
         $s = $this->style;
-        $this->pdf
-            ->setFont($this->documentFont, $s->pSize, $s->pStyle)
-            ->setTextColor(...$s->pColor);
-
+        $this->pdf->setFont($this->documentFont, $s->pSize, $s->pStyle);
+        $this->checkPageBreak($this->pdf->calcWrappedHeight($text, $this->contentWidth(), $s->pSpacing));
+        $this->pdf->setTextColor(...$s->pColor);
         $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
@@ -97,10 +191,9 @@ class Document
     public function b(string $text): static
     {
         $s = $this->style;
-        $this->pdf
-            ->setFont($this->documentFont, $s->pSize, 'B')
-            ->setTextColor(...$s->pColor);
-
+        $this->pdf->setFont($this->documentFont, $s->pSize, 'B');
+        $this->checkPageBreak($this->pdf->calcWrappedHeight($text, $this->contentWidth(), $s->pSpacing));
+        $this->pdf->setTextColor(...$s->pColor);
         $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
@@ -109,10 +202,9 @@ class Document
     public function i(string $text): static
     {
         $s = $this->style;
-        $this->pdf
-            ->setFont($this->documentFont, $s->pSize, 'I')
-            ->setTextColor(...$s->pColor);
-
+        $this->pdf->setFont($this->documentFont, $s->pSize, 'I');
+        $this->checkPageBreak($this->pdf->calcWrappedHeight($text, $this->contentWidth(), $s->pSpacing));
+        $this->pdf->setTextColor(...$s->pColor);
         $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
@@ -121,10 +213,9 @@ class Document
     public function bi(string $text): static
     {
         $s = $this->style;
-        $this->pdf
-            ->setFont($this->documentFont, $s->pSize, 'BI')
-            ->setTextColor(...$s->pColor);
-
+        $this->pdf->setFont($this->documentFont, $s->pSize, 'BI');
+        $this->checkPageBreak($this->pdf->calcWrappedHeight($text, $this->contentWidth(), $s->pSpacing));
+        $this->pdf->setTextColor(...$s->pColor);
         $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
@@ -133,11 +224,11 @@ class Document
     public function hr(): static
     {
         $s = $this->style;
+        $this->checkPageBreak($s->hrSpacing);
         $this->pdf
             ->setDrawColor(...$s->hrColor)
             ->setLineWidth(0.2)
             ->line($this->marginLeft, $this->cursorY, $this->marginLeft + $this->contentWidth(), $this->cursorY);
-
         $this->cursorY += $s->hrSpacing;
         return $this;
     }
@@ -145,6 +236,7 @@ class Document
     /** Vertical blank space. */
     public function spacer(float $height = 6.0): static
     {
+        $this->checkPageBreak($height);
         $this->cursorY += $height;
         return $this;
     }
@@ -154,12 +246,6 @@ class Document
     /**
      * Start a 12-column grid row.
      * Call col() on the returned Row, then endRow() to return here.
-     *
-     * Example:
-     *   ->row()
-     *       ->col(8)->p('Left side content')
-     *       ->col(4)->h2('Right value')
-     *   ->endRow()
      */
     public function row(): Row
     {
@@ -170,18 +256,22 @@ class Document
 
     /**
      * Start a table with the given column headers.
-     * Columns are equally distributed across the content width.
      * Call tr() for each data row, then endTable() to return here.
-     *
-     * Example:
-     *   ->table(['Prodotto', 'Qtà', 'Prezzo'])
-     *       ->tr(['Arabel PDF', '142', '€ 0'])
-     *       ->tr(['Arabel Builder', '38', '€ 49'])
-     *   ->endTable()
      */
     public function table(array $headers): Table
     {
         return new Table($this, $this->pdf, $this->cursorY, $this->contentWidth(), $this->marginLeft, $headers, $this->documentFont, $this->style);
+    }
+
+    // ── Panel ────────────────────────────────────────────────────────────────
+
+    /**
+     * Start a colored, padded content block.
+     * Configure with bg(), fg(), padding(), add content, then endPanel().
+     */
+    public function panel(): Panel
+    {
+        return new Panel($this, $this->pdf, $this->cursorY, $this->contentWidth(), $this->marginLeft, $this->documentFont, $this->style);
     }
 
     // ── Output ───────────────────────────────────────────────────────────────
@@ -195,6 +285,11 @@ class Document
      */
     public function output(string $name = 'document.pdf', string $dest = 'D'): string
     {
+        // Render footer on the last page
+        if ($this->pageNumber > 0) {
+            $this->renderFooter('default');
+        }
+
         return $this->pdf->output($name, $dest);
     }
 
@@ -209,7 +304,7 @@ class Document
 
     // ── Internal ─────────────────────────────────────────────────────────────
 
-    /** Called by Row and Table when they finish rendering. */
+    /** Called by Row, Table, and Panel when they finish rendering. */
     public function advanceCursor(float $newY): void
     {
         $this->cursorY = $newY;
@@ -225,10 +320,13 @@ class Document
         return $this->marginLeft;
     }
 
+    public function getPageNumber(): int
+    {
+        return $this->pageNumber;
+    }
+
     /**
      * X coordinate in mm where column $startSpan begins (0-based span offset).
-     *
-     * Example: colX(7) → X where the 8th column unit starts (after 7 units)
      *
      * @param int $startSpan Number of column units from the left margin (0–12)
      */
@@ -240,8 +338,6 @@ class Document
     /**
      * Width in mm of $span column units.
      *
-     * Example: colW(5) → width of 5 out of 12 columns
-     *
      * @param int $span Number of column units (1–12)
      */
     public function colW(int $span): float
@@ -252,5 +348,44 @@ class Document
     private function contentWidth(): float
     {
         return $this->pageW - $this->marginLeft - $this->marginRight;
+    }
+
+    /**
+     * Bottom Y limit of the safe content area.
+     * Accounts for bottom margin and footer height if a default footer is set.
+     */
+    private function contentBottom(): float
+    {
+        $footerH = isset($this->footers['default'])
+            ? $this->footers['default']->getHeight() + 4.0  // 4mm gap above footer
+            : 0.0;
+
+        return $this->pageH - $this->marginBottom - $footerH;
+    }
+
+    /**
+     * Trigger an automatic page break if $neededHeight would overflow
+     * the safe content area. Reuses the current orientation and header.
+     */
+    private function checkPageBreak(float $neededHeight): void
+    {
+        if ($this->pageNumber > 0 && $this->cursorY + $neededHeight > $this->contentBottom()) {
+            $this->addPage($this->currentOrientation, $this->currentHeaderName);
+        }
+    }
+
+    private function renderFooter(string $name): void
+    {
+        if (!isset($this->footers[$name])) {
+            return;
+        }
+        $this->footers[$name]->render(
+            $this->pdf,
+            $this->documentFont,
+            $this->pageW,
+            $this->pageH,
+            $this->marginLeft,
+            $this->pageNumber
+        );
     }
 }

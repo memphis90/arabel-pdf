@@ -5,6 +5,9 @@ require_once __DIR__ . '/../src/DocumentStyle.php';
 require_once __DIR__ . '/../src/Layout/Row.php';
 require_once __DIR__ . '/../src/Layout/Col.php';
 require_once __DIR__ . '/../src/Layout/Table.php';
+require_once __DIR__ . '/../src/Layout/Panel.php';
+require_once __DIR__ . '/../src/Layout/Header.php';
+require_once __DIR__ . '/../src/Layout/Footer.php';
 require_once __DIR__ . '/../src/Document.php';
 
 use Arabel\Pdf\Document;
@@ -13,19 +16,9 @@ use Arabel\Pdf\DocumentStyle;
 // ── Style: palette professionale blu/grigio ──────────────────────────────────
 
 $style = new DocumentStyle();
-$style->h1Size      = 22.0;
-$style->h1Color     = [15, 55, 120];
-$style->h1Style     = 'B';
-$style->h1Spacing   = 12.0;
-
-$style->h2Size      = 12.0;
-$style->h2Color     = [15, 55, 120];
-$style->h2Style     = 'B';
-$style->h2Spacing   = 8.0;
-
-$style->pSize       = 9.0;
-$style->pColor      = [60, 60, 60];
-$style->pSpacing    = 5.5;
+$style->h1(22, [15, 55, 120], 'B', 12)
+      ->h2(12, [15, 55, 120], 'B', 8)
+      ->p(9,  [60, 60, 60],   '',  5.5);
 
 $style->tableHeadBg = [15, 55, 120];
 $style->tableHeadFg = [255, 255, 255];
@@ -33,41 +26,42 @@ $style->tableHeadH  = 8.0;
 $style->tableAltBg  = [235, 241, 255];
 $style->tableRowH   = 7.0;
 $style->tableRowFg  = [40, 40, 40];
+$style->tableLineH  = 5.0;
 
 $style->hrColor     = [180, 195, 230];
 $style->hrSpacing   = 5.0;
 
 $doc = new Document('Helvetica', $style);
 
+// ── Header default (pagina 1) ─────────────────────────────────────────────
+
+$doc->setHeader()
+    ->bg([15, 55, 120])
+    ->fg([255, 255, 255])
+    ->left('ARABEL SRL', 'Software & Digital Products')
+    ->right('FATTURA', '# INV-2026-0042')
+    ->height(22);
+
+// ── Header named per allegato (pagina 2) ─────────────────────────────────
+
+$doc->setHeader('allegato')
+    ->bg([15, 55, 120])
+    ->fg([255, 255, 255])
+    ->left('ALLEGATO A — Dettaglio attività e ore lavorate', 'Fattura INV-2026-0042 | Acme Technologies SpA')
+    ->height(22);
+
+// ── Footer globale ────────────────────────────────────────────────────────
+
+$doc->setFooter()
+    ->left('Arabel Srl — P.IVA IT09876543210')
+    ->right('Pagina {page}');
+
 // ════════════════════════════════════════════════════════════════════════════
 // PAGINA 1 — Fattura principale
 // ════════════════════════════════════════════════════════════════════════════
 
 $doc->addPage();
-
-// ── Header: logo testuale + numero fattura ───────────────────────────────────
-
-$doc->raw()
-    ->setFillColor(15, 55, 120)
-    ->rect(0, 0, 210, 22, 'F');
-
-$doc->raw()
-    ->setFont('Helvetica', 16, 'B')
-    ->setTextColor(255, 255, 255)
-    ->text(15, 7, 'ARABEL SRL')
-    ->setFont('Helvetica', 9)
-    ->text(15, 14, 'Software & Digital Products');
-
-$doc->raw()
-    ->setFont('Helvetica', 20, 'B')
-    ->setTextColor(255, 255, 255)
-    ->text(148, 5, 'FATTURA')
-    ->setFont('Helvetica', 11)
-    ->text(148, 14, '# INV-2026-0042');
-
-// Sposta il cursore Document sotto l'header
-$doc->raw()->setXY(15, 28);
-$doc->spacer(12);
+$doc->spacer(6);
 
 // ── Mittente / Destinatario ──────────────────────────────────────────────────
 
@@ -115,25 +109,31 @@ $doc->row()
 
 $doc->spacer(8)->hr()->spacer(4);
 
-// ── Righe fattura ────────────────────────────────────────────────────────────
+// ── Righe fattura — con align() ──────────────────────────────────────────────
 
 $doc->h2('Dettaglio servizi');
 $doc->spacer(3);
 
 $doc->table(['Descrizione', 'Periodo', 'Qty', 'Prezzo unitario', 'IVA', 'Totale'])
         ->widths([5, 3, 1, 2, 1, 2])
+        ->align(['L', 'L', 'C', 'R', 'C', 'R'])   // ← TEST align()
         ->tr(['Sviluppo modulo PDF — Document API',         'Gen–Feb 2026', '1',  '€ 3.200,00', '22%', '€ 3.904,00'])
         ->tr(['Sviluppo modulo PDF — Pdf API low-level',    'Feb–Mar 2026', '1',  '€ 2.400,00', '22%', '€ 2.928,00'])
         ->tr(['Integrazione Packagist e CI/CD pipeline',    'Mar 2026',     '1',  '€ 800,00',   '22%', '€ 976,00'])
         ->tr(['Licenza annuale arabel/pdf — Piano Pro',     'Apr 2026',     '12', '€ 49,00',    '22%', '€ 717,36'])
         ->tr(['Consulenza tecnica — ottimizzazione render', 'Mar–Apr 2026', '8h', '€ 120,00',   '22%', '€ 1.170,24'])
-        ->tr(['Formazione team interno (4 sessioni)',       'Apr 2026',     '4',  '€ 350,00',   '22%', '€ 1.708,00'])
-        ->tr(['Supporto prioritario 12 mesi',               'Apr 2026',     '1',  '€ 600,00',   '22%', '€ 732,00'])
+        ->tr(['Formazione team interno (4 sessioni)',        'Apr 2026',     '4',  '€ 350,00',   '22%', '€ 1.708,00'])
+        ->tr(['Supporto prioritario 12 mesi',                'Apr 2026',     '1',  '€ 600,00',   '22%', '€ 732,00'])
+        // ← TEST colspan: riga subtotale che rompe il flusso normale
+        ->tr([
+            ['text' => 'Subtotale servizi di sviluppo (prime 3 righe):', 'colspan' => 5, 'align' => 'R'],
+            ['text' => '€ 7.808,00', 'align' => 'R'],
+        ])
     ->endTable();
 
-$doc->spacer(6);
+$doc->spacer(4);
 
-// ── Totali ───────────────────────────────────────────────────────────────────
+// ── Totali — con panel() ──────────────────────────────────────────────────────
 
 $doc->row()
         ->col(7)->p('')
@@ -146,19 +146,20 @@ $doc->row()
         ->col(3)->p('€ 2.406,36')
     ->endRow();
 
-// Riga totale evidenziata via raw()
-$curY = $doc->getCursorY();
-$doc->raw()
-    ->setFillColor(15, 55, 120)
-    ->rect($doc->colX(7), $curY - 1, $doc->colW(5), 10, 'F')
-    ->setFont('Helvetica', 11, 'B')
-    ->setTextColor(255, 255, 255)
-    ->text($doc->colX(7) + 2,  $curY + 2, 'TOTALE FATTURA:')
-    ->text($doc->colX(9) + 2,  $curY + 2, '€ 13.344,36');
+$doc->spacer(2);
 
-$doc->spacer(14)->hr()->spacer(4);
+// ← TEST panel(): sostituisce il raw() rect + text del totale
+$doc->panel()
+        ->bg([15, 55, 120])
+        ->fg([255, 255, 255])
+        ->padding(4)
+        ->h2('TOTALE FATTURA:    € 13.344,36')
+    ->endPanel();
+
+$doc->hr()->spacer(4);
 
 // ── Note di pagamento ────────────────────────────────────────────────────────
+$doc->addPage();
 
 $doc->h2('Coordinate bancarie');
 $doc->spacer(2);
@@ -190,30 +191,27 @@ $doc->row()
 // PAGINA 2 — Allegato tecnico (dettaglio ore)
 // ════════════════════════════════════════════════════════════════════════════
 
-$doc->addPage();
-
-$doc->raw()
-    ->setFillColor(15, 55, 120)
-    ->rect(0, 0, 210, 22, 'F')
-    ->setFont('Helvetica', 13, 'B')
-    ->setTextColor(255, 255, 255)
-    ->text(15, 9, 'ALLEGATO A — Dettaglio attività e ore lavorate')
-    ->setFont('Helvetica', 9)
-    ->text(15, 16, 'Fattura INV-2026-0042 | Acme Technologies SpA');
-
-$doc->spacer(22);
+$doc->addPage('P', 'allegato');
+$doc->spacer(6);
 
 $doc->h2('Consulenza tecnica — dettaglio sessioni');
 $doc->spacer(3);
 
 $doc->table(['Data', 'Attività', 'Sviluppatore', 'Ore', 'Note'])
         ->widths([2, 5, 2, 1, 4])
-        ->tr(['03/03/2026', 'Analisi architettura PDF renderer',         'M. Rossi', '2h', 'Kickoff tecnico con CTO Acme'])
-        ->tr(['05/03/2026', 'Ottimizzazione pipeline font encoding',     'M. Rossi', '1h', 'Fix iconv Windows-1252'])
-        ->tr(['10/03/2026', 'Refactoring layout engine Row/Col',         'M. Rossi', '2h', 'Introdotto grid a 12 colonne'])
+        ->align(['C', 'L', 'L', 'C', 'L'])         // ← align() anche qui
+        ->tr(['03/03/2026', 'Analisi architettura PDF renderer',         'M. Rossi',  '2h', 'Kickoff tecnico con CTO Acme'])
+        ->tr(['05/03/2026', 'Ottimizzazione pipeline font encoding',     'M. Rossi',  '1h', 'Fix iconv Windows-1252'])
+        ->tr(['10/03/2026', 'Refactoring layout engine Row/Col',         'M. Rossi',  '2h', 'Introdotto grid a 12 colonne'])
         ->tr(['18/03/2026', 'Review codice e code style',                'L. Bianchi','1h', 'PSR-12 compliance'])
-        ->tr(['24/03/2026', 'Ottimizzazione compressione stream PDF',    'M. Rossi', '1h', 'gzcompress level 6'])
-        ->tr(['02/04/2026', 'Implementazione DocumentStyle API',         'M. Rossi', '1h', 'Colori, font size, spacing'])
+        ->tr(['24/03/2026', 'Ottimizzazione compressione stream PDF',    'M. Rossi',  '1h', 'gzcompress level 6'])
+        ->tr(['02/04/2026', 'Implementazione DocumentStyle API',         'M. Rossi',  '1h', 'Colori, font size, spacing'])
+        // ← colspan: riga totale ore di consulenza
+        ->tr([
+            ['text' => 'Totale ore consulenza:', 'colspan' => 3, 'align' => 'R'],
+            ['text' => '8h', 'align' => 'C'],
+            '',
+        ])
     ->endTable();
 
 $doc->spacer(8);
@@ -223,10 +221,15 @@ $doc->spacer(3);
 
 $doc->table(['Data', 'Argomento', 'Partecipanti', 'Durata', 'Materiale'])
         ->widths([2, 4, 2, 1, 5])
-        ->tr(['07/04/2026', 'Introduzione a arabel/pdf — Document API',  '6 persone', '2h', 'Slides + esempi pratici fattura/report'])
-        ->tr(['09/04/2026', 'Pdf API low-level e posizionamento preciso', '4 persone', '2h', 'Esercizi live, watermark, immagini'])
-        ->tr(['10/04/2026', 'Grid layout e tabelle avanzate',             '6 persone', '2h', 'Workshop dashboard KPI'])
-        ->tr(['11/04/2026', 'Stili custom, CI/CD e deploy Packagist',     '3 persone', '2h', 'Setup ambiente produzione'])
+        ->align(['C', 'L', 'C', 'C', 'L'])
+        ->tr(['07/04/2026', 'Introduzione a arabel/pdf — Document API',   '6 persone', '2h', 'Slides + esempi pratici fattura/report'])
+        ->tr(['09/04/2026', 'Pdf API low-level e posizionamento preciso',  '4 persone', '2h', 'Esercizi live, watermark, immagini'])
+        ->tr(['10/04/2026', 'Grid layout e tabelle avanzate',              '6 persone', '2h', 'Workshop dashboard KPI'])
+        ->tr(['11/04/2026', 'Stili custom, CI/CD e deploy Packagist',      '3 persone', '2h', 'Setup ambiente produzione'])
+        // ← colspan full-width nota
+        ->tr([
+            ['text' => 'Tutti i materiali sono disponibili su: docs.arabel.dev/training', 'colspan' => 5, 'align' => 'C'],
+        ])
     ->endTable();
 
 $doc->spacer(8)->hr()->spacer(4);
@@ -236,7 +239,6 @@ $doc->row()
         ->col(6)->h2('Firma e timbro')
     ->endRow();
 
-// Cattura la Y dopo gli header — il riquadro firma parte da qui
 $firmaTopY = $doc->getCursorY();
 
 $doc->row()
@@ -260,12 +262,62 @@ $doc->row()
         ->col(6)->p('')
     ->endRow();
 
-// Riquadro firma: allineato alla col(6) destra tramite gli helper della griglia
 $firmaH = $doc->getCursorY() - $firmaTopY;
 $doc->raw()
     ->setDrawColor(180, 195, 230)
     ->setLineWidth(0.3)
     ->rect($doc->colX(6), $firmaTopY, $doc->colW(6), $firmaH);
+
+// ════════════════════════════════════════════════════════════════════════════
+// PAGINA 3 — Crash test panel() con varianti
+// ════════════════════════════════════════════════════════════════════════════
+
+$doc->addPage();
+
+$doc->h1('Crash test: panel()');
+$doc->spacer(4);
+
+// Panel scuro con fg bianco
+$doc->panel()
+        ->bg([15, 55, 120])
+        ->fg([255, 255, 255])
+        ->padding(5)
+        ->h2('Panel scuro — h2 + p + spacer')
+        ->spacer(2)
+        ->p('Questo testo deve apparire bianco su sfondo blu. Il panel misura la propria altezza prima di disegnare il rect, quindi testo e sfondo sono sempre allineati.')
+    ->endPanel();
+
+// Panel chiaro senza fg (usa colori default DocumentStyle)
+$doc->panel()
+        ->bg([235, 241, 255])
+        ->padding(4)
+        ->h2('Panel chiaro — colori default')
+        ->p('Nessun fg() impostato: ogni elemento usa il proprio colore da DocumentStyle.')
+        ->spacer(2)
+        ->p('Seconda riga di testo per verificare che la misurazione altezza sia corretta con multipli elementi.')
+    ->endPanel();
+
+// Panel con hr interno
+$doc->panel()
+        ->bg([245, 245, 245])
+        ->padding(5)
+        ->b('TOTALE FATTURA')
+        ->hr()
+        ->h2('€ 13.344,36')
+        ->p('IVA inclusa al 22%')
+    ->endPanel();
+
+// Panel minimal — un solo elemento
+$doc->panel()
+        ->bg([220, 255, 220])
+        ->padding(3)
+        ->p('Panel minimal — singola riga p()')
+    ->endPanel();
+
+// Testo dopo i panel — il cursore deve essere corretto
+$doc->spacer(4);
+$doc->h2('Testo dopo tutti i panel — cursore ok?');
+$doc->p('Se questo testo appare subito dopo l\'ultimo panel senza sovrapposizioni, il calcolo del cursore è corretto.');
 
 // ── Output ───────────────────────────────────────────────────────────────────
 
@@ -274,4 +326,4 @@ $out = __DIR__ . '/output/invoice_test_' . $ts . '.pdf';
 $doc->output($out, 'F');
 
 echo "Fattura generata: $out\n";
-echo "Pagine: 2 (fattura + allegato tecnico)\n";
+echo "Pagine: 3 (fattura + allegato + crash test panel)\n";
