@@ -15,17 +15,17 @@ Two layers: a high-level **Document API** for reports and invoices, and a low-le
 
 ## Why arabel/pdf?
 
-Most PHP PDF libraries are either **too heavy** (mPDF, TCPDF ship megabytes of dependencies) or **too low-level** (FPDF forces you to think in millimetres for everything).
+Most PHP PDF libraries are either **too heavy** (mPDF, TCPDF ship megabytes of dependencies) or **too low-level** (raw PDF forces you to think in millimetres for everything).
 
 `arabel/pdf` gives you the best of both worlds:
 
-| | arabel/pdf | mPDF | dompdf | TCPDF | FPDF  |
-|---|:---:|:---:|:---:|:---:|:-----:|
-| Dependencies | **0** | Many | Many | Some | **0** |
-| Speed | ⭐⭐⭐⭐⭐| ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐  |
-| Fluent API | ✅ | Partial | ✗ | ✗ |   ✗   |
-| PHP 8.1+ native | ✅ | Partial | Partial | ✗ |   ✗   |
-| Package size | **~100 KB** | > 10 MB | Large | Large | Small |
+| | arabel/pdf | mPDF | dompdf | TCPDF |
+|---|:---:|:---:|:---:|:---:|
+| Dependencies | **0** | Many | Many | Some |
+| Speed | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
+| Fluent API | ✅ | Partial | ✗ | ✗ |
+| PHP 8.1+ native | ✅ | Partial | Partial | ✗ |
+| Package size | **~100 KB** | > 10 MB | Large | Large |
 
 *Based on community benchmarks and package sizes. Formal benchmarks coming in v1.0.*
 
@@ -66,9 +66,14 @@ Drop down to **Pdf** via `$doc->raw()` when you need exact positioning.
 
 ```php
 use Arabel\Pdf\Document;
+use Arabel\Pdf\DocumentStyle;
 
-$doc = new Document();         // default font: Helvetica
-// $doc = new Document('Times-Roman');  // override document font
+$style = new DocumentStyle();
+$style->h1(22, [15, 55, 120], 'B', 12)
+      ->h2(12, [15, 55, 120], 'B', 8)
+      ->p(9,  [60, 60, 60],   '',  5.5);
+
+$doc = new Document('Helvetica', $style);
 
 $doc->addPage()
     ->h1('Monthly Report')
@@ -76,9 +81,43 @@ $doc->addPage()
     ->hr()
     ->spacer()
     ->p('Summary of current month sales compared to the previous period.')
-    ->spacer()
     ->output('report.pdf', 'F');
 ```
+
+### Named headers and footers
+
+Define repeatable headers and footers once — they are applied automatically on every `addPage()`.  
+Multiple named variants let you use different headers for different sections.
+
+```php
+// Default header — applied to every addPage()
+$doc->setHeader()
+    ->bg([15, 55, 120])
+    ->fg([255, 255, 255])
+    ->left('ARABEL SRL', 'Software & Digital Products')
+    ->right('FATTURA', '# INV-2026-0042')
+    ->height(22);
+
+// Named header — applied explicitly
+$doc->setHeader('allegato')
+    ->bg([15, 55, 120])
+    ->fg([255, 255, 255])
+    ->left('ALLEGATO A — Dettaglio attività', 'Fattura INV-2026-0042');
+
+// Footer with page number
+$doc->setFooter()
+    ->left('Arabel Srl — P.IVA IT09876543210')
+    ->right('Pagina {page}');
+
+$doc->addPage();                // → 'default' header + footer
+$doc->addPage('P', 'allegato'); // → 'allegato' header + footer
+$doc->addPage('P', false);      // → no header, footer only
+```
+
+### Automatic page break
+
+Content never overlaps the footer. Before rendering each element, the Document measures
+its height and triggers a new page automatically if it would exceed the safe area.
 
 ### Grid layout — row / col
 
@@ -109,16 +148,6 @@ $doc->addPage()
     ->output('dashboard.pdf', 'F');
 ```
 
-Content methods on `col()` return the parent `Row` so you can keep chaining columns.
-Call `endRow()` to return to the `Document`.
-
-| `col()` method | Description |
-|----------------|-------------|
-| `h1(string)`   | Large heading |
-| `h2(string)`   | Section heading |
-| `p(string)`    | Paragraph text |
-| `text(string)` | Plain text |
-
 ### Tables
 
 ```php
@@ -127,40 +156,85 @@ $doc->addPage()
     ->spacer()
 
     ->table(['Product', 'Category', 'Qty', 'Revenue'])
+        ->widths([3, 2, 1, 1])
+        ->align(['L', 'L', 'C', 'R'])
         ->tr(['Arabel PDF',     'Library', '142', '€ 0'])
-        ->tr(['Arabel Builder', 'Tool',     '38', '€ 1,862'])
-        ->tr(['Arabel Suite',   'Bundle',   '12', '€ 2,388'])
+        ->tr(['Arabel Builder', 'Tool',      '38', '€ 1,862'])
+        ->tr(['Arabel Suite',   'Bundle',    '12', '€ 2,388'])
     ->endTable()
 
     ->output('products.pdf', 'F');
 ```
 
-Columns are equally distributed by default. Use `widths()` to set custom proportions:
+`widths()`, `align()`, and `tr()` can be called in **any order** — rendering is deferred to `endTable()`.
+
+**Colspan** — merge cells across columns:
 
 ```php
-->table(['Region', 'Clients', 'Total'])
-    ->widths([3, 1, 1])   // 60% / 20% / 20%
-    ->tr(['North Italy', '89', '€ 12,400'])
-    ->tr(['South Italy', '22', '€ 4,900'])
+->table(['Descrizione', 'Qty', 'Prezzo', 'IVA', 'Totale'])
+    ->tr(['Arabel PDF', '1', '€ 49,00', '22%', '€ 59,78'])
+    ->tr([
+        ['text' => 'Subtotale:', 'colspan' => 4, 'align' => 'R'],
+        ['text' => '€ 59,78',                    'align' => 'R'],
+    ])
 ->endTable()
+```
+
+### Colored panels
+
+```php
+$doc->panel()
+        ->bg([15, 55, 120])
+        ->fg([255, 255, 255])
+        ->padding(5)
+        ->h2('TOTALE FATTURA:')
+        ->b('€ 13.344,36')
+    ->endPanel();
+```
+
+Background is measured and drawn before text — no coordinate math required.
+
+### DocumentStyle
+
+```php
+$style = new DocumentStyle();
+
+// Fluent configurators (recommended)
+$style->h1(22, [15, 55, 120], 'B', 12)
+      ->h2(12, [15, 55, 120], 'B', 8)
+      ->p(9,  [60, 60, 60],   '',  5.5);
+
+// Table style
+$style->tableHeadBg = [15, 55, 120];
+$style->tableHeadFg = [255, 255, 255];
+$style->tableAltBg  = [235, 241, 255];
+$style->tableRowH   = 7.0;
+$style->tableLineH  = 5.0;
 ```
 
 ### Document methods reference
 
 | Method | Description |
 |--------|-------------|
-| `addPage('P'\|'L')` | New page — portrait or landscape |
-| `h1(string)` | Large heading (20pt) |
-| `h2(string)` | Section heading (14pt) |
-| `p(string)` | Body paragraph (10pt) |
+| `addPage('P'\|'L', $header)` | New page — portrait or landscape, optional named header |
+| `setHeader(string $name = 'default')` | Register a named header → `Header` |
+| `setFooter(string $name = 'default')` | Register a named footer → `Footer` |
+| `h1(string)` | Large heading |
+| `h2(string)` | Section heading |
+| `p(string)` | Body paragraph |
+| `b(string)` | Bold paragraph |
+| `i(string)` | Italic paragraph |
+| `bi(string)` | Bold + italic paragraph |
 | `hr()` | Horizontal rule |
 | `spacer(float $mm = 6)` | Vertical blank space |
 | `row()` | Open a 12-column grid row → `Row` |
 | `table(array $headers)` | Open a table → `Table` |
+| `panel()` | Open a colored content block → `Panel` |
 | `output(string, string)` | Finalize and output the PDF |
 | `raw()` | Access the underlying `Pdf` instance |
-| `colX(int $startSpan)` | X coordinate in mm where column unit begins — use with `raw()` |
-| `colW(int $span)` | Width in mm of N column units — use with `raw()` |
+| `getCursorY()` | Current Y position in mm |
+| `colX(int $startSpan)` | X coordinate of a grid column — use with `raw()` |
+| `colW(int $span)` | Width of N grid columns — use with `raw()` |
 
 ---
 
@@ -185,16 +259,14 @@ $pdf->addPage()
     ->output('output.pdf', 'F');
 ```
 
-All mutating methods return `static` — the full API is fluent.  
-Getter methods (`getX()`, `getY()`, `getMargins()`, `getStringWidth()`) return their
-value and naturally break the chain, which is intentional.
+All mutating methods return `static` — the full API is fluent.
 
 ### Pdf methods reference
 
 | Method | Description |
 |--------|-------------|
 | `addPage('P'\|'L')` | New page |
-| `setFont(family, size)` | Set font family and size in pt |
+| `setFont(family, size, style)` | Set font family, size in pt, style ('B', 'I', 'BI') |
 | `setTextColor(r, g, b)` | Text colour (0–255 per channel) |
 | `setFillColor(r, g, b)` | Fill colour for cells and rects |
 | `setDrawColor(r, g, b)` | Stroke colour for borders and lines |
@@ -202,12 +274,12 @@ value and naturally break the chain, which is intentional.
 | `setMargins(l, t, r, b)` | Page margins in mm |
 | `setXY(x, y)` | Move cursor to absolute position (mm) |
 | `getX() / getY()` | Current cursor position in mm |
+| `getStringWidth(string)` | Measure string width in mm |
 | `text(x, y, string)` | Print text at absolute position |
 | `cell(w, h, text, border, ln, align)` | Render a cell, advance cursor |
 | `rect(x, y, w, h, style)` | Draw a rectangle |
 | `line(x1, y1, x2, y2)` | Draw a line |
 | `image(file, x, y, w, h)` | Embed a JPEG or PNG image |
-| `getStringWidth(string)` | Measure string width in mm |
 | `output(name, dest)` | Finalize and output the PDF |
 
 ### `output()` destinations
@@ -218,13 +290,6 @@ value and naturally break the chain, which is intentional.
 | `'I'` | Open inline in browser |
 | `'F'` | Save to file (`$name` = full path) |
 | `'S'` | Return raw PDF bytes as string |
-
-### Supported image formats
-
-| Format | Notes |
-|--------|-------|
-| JPEG   | Any colour mode |
-| PNG    | 8-bit RGB or Grayscale, no alpha channel |
 
 ---
 
@@ -257,9 +322,15 @@ $doc->spacer()
 - [x] Fluent Document API (row/col grid, tables, headings)
 - [x] Bold / italic font support with dynamic font registry
 - [x] Document style customization (`DocumentStyle`)
-- [x] Text wrapping inside `col()` and Document methods
-- [ ] PNG with alpha channel support
-- [ ] Automatic header / footer
+- [x] Text wrapping in `col()`, tables, and Document methods
+- [x] Table column alignment and colspan
+- [x] Colored panels (`panel()`)
+- [x] Named repeatable headers and footers
+- [x] Automatic page break before footer safe area
+- [x] Fluent `DocumentStyle` configurators (`h1/h2/p()`)
+- [ ] Table helper for totals rows
+- [ ] `money()` / `date()` formatting helpers
+- [ ] PNG with alpha channel / logo support
 - [ ] Expanded test coverage and official benchmarks
 
 ---
