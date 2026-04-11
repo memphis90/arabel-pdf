@@ -37,7 +37,11 @@ class Table
     /** @var float[] Column widths in mm */
     private array $colWidths;
 
-    private int $rowIndex = 0;
+    /** @var string[] Stored until the first tr() so widths() can run first */
+    private array $headers;
+
+    private bool $headRendered = false;
+    private int  $rowIndex     = 0;
 
     public function __construct(
         Document      $doc,
@@ -58,8 +62,8 @@ class Table
         $this->style        = $style;
         $this->colCount     = count($headers);
         $this->colWidths    = array_fill(0, $this->colCount, $contentWidth / $this->colCount);
-
-        $this->renderHead($headers);
+        $this->headers      = $headers;
+        // renderHead() is deferred to the first tr() so widths() can be called first
     }
 
     /**
@@ -86,21 +90,35 @@ class Table
      */
     public function tr(array $cells): static
     {
-        $s     = $this->style;
-        $isAlt = $this->rowIndex % 2 === 1;
+        if (!$this->headRendered) {
+            $this->renderHead($this->headers);
+        }
 
+        $s = $this->style;
+
+        // First pass: measure each cell and find the tallest
+        $this->pdf->setFont($this->documentFont, $s->pSize);
+        $rowH = $s->tableRowH;
+        foreach ($cells as $i => $cell) {
+            $h = $this->pdf->calcWrappedHeight((string) $cell, $this->colWidths[$i], $s->tableLineH);
+            if ($h > $rowH) {
+                $rowH = $h;
+            }
+        }
+
+        // Second pass: render all cells at the same height
+        $isAlt = $this->rowIndex % 2 === 1;
         $this->pdf
-            ->setFont($this->documentFont, $s->pSize)
             ->setFillColor(...($isAlt ? $s->tableAltBg : [255, 255, 255]))
             ->setTextColor(...$s->tableRowFg)
             ->setXY($this->marginLeft, $this->cursorY);
 
         foreach ($cells as $i => $cell) {
             $ln = $i === $this->colCount - 1 ? 1 : 0;
-            $this->pdf->cell($this->colWidths[$i], $s->tableRowH, (string) $cell, 1, $ln, 'L');
+            $this->pdf->multiCell($this->colWidths[$i], $rowH, (string) $cell, 1, $s->tableLineH, 'L', $ln);
         }
 
-        $this->cursorY += $s->tableRowH;
+        $this->cursorY += $rowH;
         $this->rowIndex++;
         return $this;
     }
@@ -111,6 +129,11 @@ class Table
      */
     public function endTable(): Document
     {
+        // Edge case: table with headers only and no tr() calls
+        if (!$this->headRendered) {
+            $this->renderHead($this->headers);
+        }
+
         $this->doc->advanceCursor($this->cursorY);
         return $this->doc;
     }
@@ -121,17 +144,28 @@ class Table
     {
         $s = $this->style;
 
+        // First pass: measure and find the tallest header cell
+        $this->pdf->setFont($this->documentFont, $s->pSize);
+        $headH = $s->tableHeadH;
+        foreach ($headers as $i => $header) {
+            $h = $this->pdf->calcWrappedHeight($header, $this->colWidths[$i], $s->tableLineH);
+            if ($h > $headH) {
+                $headH = $h;
+            }
+        }
+
+        // Second pass: render all headers at the same height
         $this->pdf
-            ->setFont($this->documentFont, $s->pSize)
             ->setFillColor(...$s->tableHeadBg)
             ->setTextColor(...$s->tableHeadFg)
             ->setXY($this->marginLeft, $this->cursorY);
 
         foreach ($headers as $i => $header) {
             $ln = $i === $this->colCount - 1 ? 1 : 0;
-            $this->pdf->cell($this->colWidths[$i], $s->tableHeadH, $header, 1, $ln, 'L');
+            $this->pdf->multiCell($this->colWidths[$i], $headH, $header, 1, $s->tableLineH, 'L', $ln);
         }
 
-        $this->cursorY += $s->tableHeadH;
+        $this->cursorY    += $headH;
+        $this->headRendered = true;
     }
 }

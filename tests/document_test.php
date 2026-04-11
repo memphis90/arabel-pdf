@@ -60,7 +60,33 @@ $doc->addPage()
         ->col(4)->p('indice soddisfazione')
     ->endRow();
 
-// ── Pagina 2: landscape con griglia ─────────────────────────────────────────
+// ── Pagina 2: text wrapping ──────────────────────────────────────────────────
+
+$doc->addPage()
+    ->h1('Text Wrapping — Test')
+    ->hr()
+    ->spacer(4)
+
+    // Paragrafo lungo a piena larghezza
+    ->p('Questo è un paragrafo molto lungo scritto a piena larghezza della pagina. Il testo dovrebbe andare a capo automaticamente senza sforare il margine destro, continuando sulla riga successiva in modo pulito e leggibile.')
+    ->spacer(4)
+
+    // Row con colonne strette: la col(4) forza il wrap prima
+    ->row()
+        ->col(4)->p('Colonna stretta: testo lungo che non può stare su una riga sola e deve andare a capo almeno una volta.')
+        ->col(4)->p('Altra colonna con testo di lunghezza simile che wrappa anch\'essa su più righe.')
+        ->col(4)->p('Terza colonna. La row si allunga in base alla colonna più alta.')
+    ->endRow()
+
+    ->spacer(6)
+
+    // Row asimmetrica: col larga vs col stretta
+    ->row()
+        ->col(8)->p('Colonna larga (8/12): questo testo ha molto spazio e probabilmente sta su una riga sola, oppure va a capo solo se è davvero lungo.')
+        ->col(4)->h2('€ 24.500')
+    ->endRow();
+
+// ── Pagina 3: landscape con griglia ─────────────────────────────────────────
 
 $doc->addPage('L')
     ->h1('Dashboard Landscape')
@@ -109,14 +135,18 @@ $doc2->addPage()
         ->tr(['Text wrapping', 'In sviluppo', 'Alta'])
         ->tr(['Bold / Italic',  'In sviluppo', 'Alta'])
         ->tr(['PNG Alpha',      'Pianificato', 'Media'])
-    ->endTable()
-    ->output(__DIR__ . '/output/document_style_test.pdf', 'F');
+    ->endTable();
+
+$ts = date('Ymd_His');
+
+$styleOut = __DIR__ . '/output/document_style_test_' . $ts . '.pdf';
+$doc2->output($styleOut, 'F');
 
 // ── Output ───────────────────────────────────────────────────────────────────
 
-$out = __DIR__ . '/output/document_test.pdf';
+$out = __DIR__ . '/output/document_test_' . $ts . '.pdf';
 $doc->output($out, 'F');
 
-echo "PDF generato: $out\n";
-echo "PDF stile custom: " . __DIR__ . "/output/document_style_test.pdf\n";
-echo "Pagine: 2 (portrait + landscape) + 1 stile custom\n";
+echo "PDF generato:    $out\n";
+echo "PDF stile custom: $styleOut\n";
+echo "Pagine: 1 layout, 2 wrapping, 3 landscape, + 1 stile custom\n";

@@ -19,12 +19,12 @@ Most PHP PDF libraries are either **too heavy** (mPDF, TCPDF ship megabytes of d
 
 `arabel/pdf` gives you the best of both worlds:
 
-| | arabel/pdf | mPDF | dompdf | TCPDF | FPDF |
-|---|:---:|:---:|:---:|:---:|:---:|
+| | arabel/pdf | mPDF | dompdf | TCPDF | FPDF  |
+|---|:---:|:---:|:---:|:---:|:-----:|
 | Dependencies | **0** | Many | Many | Some | **0** |
-| Speed | ★★★★★ | ★★ | ★★★ | ★★★ | ★★★★ |
-| Fluent API | ✅ | Partial | ✗ | ✗ | ✗ |
-| PHP 8.1+ native | ✅ | Partial | Partial | ✗ | ✗ |
+| Speed | ⭐⭐⭐⭐⭐| ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐  |
+| Fluent API | ✅ | Partial | ✗ | ✗ |   ✗   |
+| PHP 8.1+ native | ✅ | Partial | Partial | ✗ |   ✗   |
 | Package size | **~100 KB** | > 10 MB | Large | Large | Small |
 
 *Based on community benchmarks and package sizes. Formal benchmarks coming in v1.0.*
@@ -159,6 +159,8 @@ Columns are equally distributed by default. Use `widths()` to set custom proport
 | `table(array $headers)` | Open a table → `Table` |
 | `output(string, string)` | Finalize and output the PDF |
 | `raw()` | Access the underlying `Pdf` instance |
+| `colX(int $startSpan)` | X coordinate in mm where column unit begins — use with `raw()` |
+| `colW(int $span)` | Width in mm of N column units — use with `raw()` |
 
 ---
 
@@ -255,7 +257,7 @@ $doc->spacer()
 - [x] Fluent Document API (row/col grid, tables, headings)
 - [x] Bold / italic font support with dynamic font registry
 - [x] Document style customization (`DocumentStyle`)
-- [ ] Text wrapping inside `col()` and `cell()`
+- [x] Text wrapping inside `col()` and Document methods
 - [ ] PNG with alpha channel support
 - [ ] Automatic header / footer
 - [ ] Expanded test coverage and official benchmarks

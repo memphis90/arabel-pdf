@@ -46,10 +46,10 @@ class Col
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->h1Size, $s->h1Style)
-            ->setTextColor(...$s->h1Color)
-            ->text($this->x, $this->y, $text);
+            ->setTextColor(...$s->h1Color);
 
-        $this->row->trackHeight($s->h1Spacing);
+        $h = $this->pdf->multiLine($this->x, $this->y, $this->width, $text, $s->h1Spacing);
+        $this->row->trackHeight($h);
         return $this->row;
     }
 
@@ -59,10 +59,10 @@ class Col
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->h2Size, $s->h2Style)
-            ->setTextColor(...$s->h2Color)
-            ->text($this->x, $this->y, $text);
+            ->setTextColor(...$s->h2Color);
 
-        $this->row->trackHeight($s->h2Spacing);
+        $h = $this->pdf->multiLine($this->x, $this->y, $this->width, $text, $s->h2Spacing);
+        $this->row->trackHeight($h);
         return $this->row;
     }
 
@@ -72,10 +72,10 @@ class Col
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, $s->pStyle)
-            ->setTextColor(...$s->pColor)
-            ->text($this->x, $this->y, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->row->trackHeight($s->pSpacing);
+        $h = $this->pdf->multiLine($this->x, $this->y, $this->width, $text, $s->pSpacing);
+        $this->row->trackHeight($h);
         return $this->row;
     }
 
@@ -85,10 +85,10 @@ class Col
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, 'B')
-            ->setTextColor(...$s->pColor)
-            ->text($this->x, $this->y, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->row->trackHeight($s->pSpacing);
+        $h = $this->pdf->multiLine($this->x, $this->y, $this->width, $text, $s->pSpacing);
+        $this->row->trackHeight($h);
         return $this->row;
     }
 
@@ -98,10 +98,10 @@ class Col
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, 'I')
-            ->setTextColor(...$s->pColor)
-            ->text($this->x, $this->y, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->row->trackHeight($s->pSpacing);
+        $h = $this->pdf->multiLine($this->x, $this->y, $this->width, $text, $s->pSpacing);
+        $this->row->trackHeight($h);
         return $this->row;
     }
 
@@ -111,10 +111,10 @@ class Col
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, 'BI')
-            ->setTextColor(...$s->pColor)
-            ->text($this->x, $this->y, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->row->trackHeight($s->pSpacing);
+        $h = $this->pdf->multiLine($this->x, $this->y, $this->width, $text, $s->pSpacing);
+        $this->row->trackHeight($h);
         return $this->row;
     }
 
@@ -124,10 +124,10 @@ class Col
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize)
-            ->setTextColor(0, 0, 0)
-            ->text($this->x, $this->y, $text);
+            ->setTextColor(0, 0, 0);
 
-        $this->row->trackHeight($s->pSpacing);
+        $h = $this->pdf->multiLine($this->x, $this->y, $this->width, $text, $s->pSpacing);
+        $this->row->trackHeight($h);
         return $this->row;
     }
 }

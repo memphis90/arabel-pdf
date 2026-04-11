@@ -63,10 +63,9 @@ class Document
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->h1Size, $s->h1Style)
-            ->setTextColor(...$s->h1Color)
-            ->text($this->marginLeft, $this->cursorY, $text);
+            ->setTextColor(...$s->h1Color);
 
-        $this->cursorY += $s->h1Spacing;
+        $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->h1Spacing);
         return $this;
     }
 
@@ -76,10 +75,9 @@ class Document
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->h2Size, $s->h2Style)
-            ->setTextColor(...$s->h2Color)
-            ->text($this->marginLeft, $this->cursorY, $text);
+            ->setTextColor(...$s->h2Color);
 
-        $this->cursorY += $s->h2Spacing;
+        $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->h2Spacing);
         return $this;
     }
 
@@ -89,10 +87,9 @@ class Document
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, $s->pStyle)
-            ->setTextColor(...$s->pColor)
-            ->text($this->marginLeft, $this->cursorY, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->cursorY += $s->pSpacing;
+        $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
 
@@ -102,10 +99,9 @@ class Document
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, 'B')
-            ->setTextColor(...$s->pColor)
-            ->text($this->marginLeft, $this->cursorY, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->cursorY += $s->pSpacing;
+        $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
 
@@ -115,10 +111,9 @@ class Document
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, 'I')
-            ->setTextColor(...$s->pColor)
-            ->text($this->marginLeft, $this->cursorY, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->cursorY += $s->pSpacing;
+        $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
 
@@ -128,10 +123,9 @@ class Document
         $s = $this->style;
         $this->pdf
             ->setFont($this->documentFont, $s->pSize, 'BI')
-            ->setTextColor(...$s->pColor)
-            ->text($this->marginLeft, $this->cursorY, $text);
+            ->setTextColor(...$s->pColor);
 
-        $this->cursorY += $s->pSpacing;
+        $this->cursorY += $this->pdf->multiLine($this->marginLeft, $this->cursorY, $this->contentWidth(), $text, $s->pSpacing);
         return $this;
     }
 
@@ -229,6 +223,30 @@ class Document
     public function getMarginLeft(): float
     {
         return $this->marginLeft;
+    }
+
+    /**
+     * X coordinate in mm where column $startSpan begins (0-based span offset).
+     *
+     * Example: colX(7) → X where the 8th column unit starts (after 7 units)
+     *
+     * @param int $startSpan Number of column units from the left margin (0–12)
+     */
+    public function colX(int $startSpan): float
+    {
+        return $this->marginLeft + $startSpan * ($this->contentWidth() / 12);
+    }
+
+    /**
+     * Width in mm of $span column units.
+     *
+     * Example: colW(5) → width of 5 out of 12 columns
+     *
+     * @param int $span Number of column units (1–12)
+     */
+    public function colW(int $span): float
+    {
+        return $span * ($this->contentWidth() / 12);
     }
 
     private function contentWidth(): float

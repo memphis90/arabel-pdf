@@ -60,5 +60,6 @@ class DocumentStyle
     public array $tableRowFg  = [60, 60, 60];
     /** @var int[] */
     public array $tableAltBg  = [245, 247, 255];  // alternating row background
-    public float $tableRowH   = 7.0;
+    public float $tableRowH   = 7.0;   // minimum row height in mm
+    public float $tableLineH  = 5.0;   // line height when text wraps (mm per line)
 }

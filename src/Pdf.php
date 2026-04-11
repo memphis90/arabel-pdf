@@ -469,10 +469,10 @@ class Pdf
 
     /**
      * Calculate the rendered width of a string with the current font and size.
-     * Useful for manual alignment before calling cell() or text().
+     * Returns width in points. For mm use getStringWidthMm().
      *
      * @param  string $text UTF-8 string
-     * @return float  Width in mm
+     * @return float  Width in points
      */
     public function getStringWidth(string $text): float
     {
@@ -481,6 +481,121 @@ class Pdf
             $w += self::HELVETICA_WIDTHS[$text[$i]] ?? 556;
         }
         return $w * $this->fontSize / 1000;
+    }
+
+    /**
+     * Calculate the height in mm that $text will occupy when wrapped inside $maxWidthMm.
+     * The active font must be set before calling this.
+     *
+     * @param  float  $maxWidthMm   Available width in mm (cell width minus padding)
+     * @param  float  $lineHeightMm Vertical advance per line in mm
+     * @return float  Total height in mm (lines × lineHeightMm)
+     */
+    public function calcWrappedHeight(string $text, float $maxWidthMm, float $lineHeightMm): float
+    {
+        $lines        = $this->wrapText($text, $maxWidthMm - 2.0);  // 2mm total horizontal padding
+        $fontHeightMm = $this->fontSize / self::MM_TO_PT;
+        // Add one extra (lineH − fontH) as bottom padding so the last line
+        // has the same breathing room as the top margin above the first line.
+        return count($lines) * $lineHeightMm + ($lineHeightMm - $fontHeightMm);
+    }
+
+    /**
+     * Render a cell with text that wraps to fit within the cell width.
+     * The background, border, and all text lines are drawn at height $h.
+     * Use calcWrappedHeight() first to determine the correct $h.
+     *
+     * @param float  $w             Cell width in mm
+     * @param float  $h             Cell height in mm (pre-calculated, covers all lines)
+     * @param string $text          UTF-8 text to render
+     * @param int    $border        0 = no border | 1 = full border
+     * @param float  $lineHeightMm  Vertical advance per line in mm
+     * @param string $align         'L' left | 'C' center | 'R' right
+     * @param int    $ln            0 = advance right | 1 = next line
+     */
+    public function multiCell(
+        float  $w,
+        float  $h,
+        string $text,
+        int    $border,
+        float  $lineHeightMm,
+        string $align = 'L',
+        int    $ln    = 0
+    ): static {
+        $this->assertPageOpen();
+
+        $pageH  = $this->currentPageHeight();
+        $sf     = self::MM_TO_PT;
+        $px     = $this->x * $sf;
+        $py     = $pageH - $this->y * $sf - $h * $sf;
+        $pw     = $w * $sf;
+        $ph     = $h * $sf;
+        $out    = '';
+
+        // Background fill
+        if ($this->fillColor !== [255, 255, 255]) {
+            $out .= $this->colorOp($this->fillColor, 'rg') . "\n$px $py $pw $ph re f\n";
+        }
+
+        // Border
+        if ($border) {
+            $out .= $this->colorOp($this->drawColor, 'RG') . "\n$px $py $pw $ph re S\n";
+        }
+
+        // Wrapped text lines — each line vertically centered in its line slot
+        if ($text !== '') {
+            $lines   = $this->wrapText($text, $w - 2.0);
+            $alias   = $this->fonts[$this->currentFontKey]['alias'];
+            $col     = $this->colorOp($this->textColor, 'rg');
+            $lineHPt = $lineHeightMm * $sf;
+
+            foreach ($lines as $i => $line) {
+                // Baseline: center of slot i from the top of the cell
+                $ty  = $py + $ph - ($i + 0.5) * $lineHPt - $this->fontSize / 2;
+                $tx  = match ($align) {
+                    'C'     => ($this->x + ($w - $this->getStringWidthMm($line)) / 2) * $sf,
+                    'R'     => ($this->x + $w - $this->getStringWidthMm($line) - 1.0) * $sf,
+                    default => ($this->x + 1.0) * $sf,
+                };
+                $esc = $this->escapeText($line);
+                $out .= "BT\n$col\n/$alias $this->fontSize Tf\n$tx $ty Td\n($esc) Tj\nET\n";
+            }
+        }
+
+        $this->writePage($out);
+
+        // Advance cursor
+        if ($ln === 1) {
+            $this->x  = $this->marginLeft;
+            $this->y += $h;
+        } else {
+            $this->x += $w;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Render text wrapped to fit within $maxWidthMm, advancing Y by $lineHeightMm
+     * per line. The active font and text color must be set before calling this.
+     *
+     * Long single words that exceed the width are placed on their own line
+     * without mid-word breaking.
+     *
+     * @param  float  $x             X coordinate in mm
+     * @param  float  $y             Y coordinate in mm (top of first line)
+     * @param  float  $maxWidthMm    Maximum line width in mm
+     * @param  string $text          UTF-8 text to render
+     * @param  float  $lineHeightMm  Vertical advance per line in mm
+     * @return float  Total height consumed (lines × lineHeightMm)
+     */
+    public function multiLine(float $x, float $y, float $maxWidthMm, string $text, float $lineHeightMm): float
+    {
+        $lines = $this->wrapText($text, $maxWidthMm);
+        foreach ($lines as $i => $line) {
+            $this->text($x, $y + $i * $lineHeightMm, $line);
+        }
+        return count($lines) * $lineHeightMm;
     }
 
     /**
@@ -687,6 +802,41 @@ class Pdf
             },
             default    => $family,
         };
+    }
+
+    /**
+     * Break $text into lines that fit within $maxWidthMm using the current font.
+     *
+     * @return string[]
+     */
+    private function wrapText(string $text, float $maxWidthMm): array
+    {
+        $words   = explode(' ', $text);
+        $lines   = [];
+        $current = '';
+
+        foreach ($words as $word) {
+            $candidate = $current === '' ? $word : $current . ' ' . $word;
+            if ($this->getStringWidthMm($candidate) <= $maxWidthMm) {
+                $current = $candidate;
+            } else {
+                if ($current !== '') {
+                    $lines[] = $current;
+                }
+                $current = $word;
+            }
+        }
+
+        if ($current !== '') {
+            $lines[] = $current;
+        }
+
+        return $lines ?: [''];
+    }
+
+    private function getStringWidthMm(string $text): float
+    {
+        return $this->getStringWidth($text) / self::MM_TO_PT;
     }
 
     private function colorOp(array $rgb, string $op): string
