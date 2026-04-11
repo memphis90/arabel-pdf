@@ -1,9 +1,9 @@
 {
     "name": "arabel/pdf",
-    "description": "Lightweight PHP 8.1+ PDF generation library. Zero dependencies.",
+    "description": "Lightweight, zero-dependency and fast PDF generator for PHP 8.1+. Fluent & semantic API with high-level Document and low-level Pdf layers.",
     "type": "library",
     "license": "MIT",
-    "keywords": ["pdf", "generate", "php", "lightweight", "fpdf", "zero-dependencies"],
+    "keywords": ["pdf", "pdf-generator", "lightweight", "zero-dependency", "fluent", "php8", "php81", "fast-pdf", "no-dependencies", "document", "report"],
     "authors": [
         {
             "name": "Arabel",
