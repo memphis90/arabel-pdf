@@ -27,6 +27,8 @@ Most PHP PDF libraries are either **too heavy** (mPDF, TCPDF ship megabytes of d
 | PHP 8.1+ native | ✅ | Partial | Partial | ✗ | ✗ |
 | Package size | **~100 KB** | > 10 MB | Large | Large | Small |
 
+*Based on community benchmarks and package sizes. Formal benchmarks coming in v1.0.*
+
 ---
 
 ## Installation
