@@ -130,4 +130,26 @@ class Col
         $this->row->trackHeight($h);
         return $this->row;
     }
+
+    /**
+     * Render an image filling the column width — returns the parent Row.
+     *
+     * The height is calculated automatically to preserve the aspect ratio.
+     * Pass an explicit $h (in mm) to override.
+     *
+     * Supports JPEG and PNG (including alpha — alpha is flattened against white).
+     *
+     * @param string $file Path to the image file (.jpg, .jpeg, .png)
+     * @param float  $h    Display height in mm (0 = auto from aspect ratio)
+     */
+    public function image(string $file, float $h = 0.0): Row
+    {
+        if ($h === 0.0) {
+            [$imgW, $imgH] = $this->pdf->getImagePixelSize($file);
+            $h = $imgH > 0 ? $this->width * ($imgH / $imgW) : $this->width;
+        }
+        $this->pdf->image($file, $this->x, $this->y, $this->width, $h);
+        $this->row->trackHeight($h);
+        return $this->row;
+    }
 }

@@ -142,6 +142,24 @@ $ts = date('Ymd_His');
 $styleOut = __DIR__ . '/output/document_style_test_' . $ts . '.pdf';
 $doc2->output($styleOut, 'F');
 
+// ── setMargins() test ─────────────────────────────────────────────────────────
+
+$doc3 = new Document();
+$doc3->setMargins(30, 25, 30, 20)  // wide margins
+    ->addPage()
+    ->h1('Wide Margin Test')
+    ->p('This document uses setMargins(30, 25, 30, 20). Content should be visibly narrower than default.')
+    ->hr()
+    ->spacer(6)
+    ->row()
+        ->col(6)->p('Left col — content stays inside the wider margins.')
+        ->col(6)->p('Right col — same.')
+    ->endRow();
+
+$marginsOut = __DIR__ . '/output/document_margins_test_' . $ts . '.pdf';
+$doc3->output($marginsOut, 'F');
+echo "Margini test: $marginsOut\n";
+
 // ── Output ───────────────────────────────────────────────────────────────────
 
 $out = __DIR__ . '/output/document_test_' . $ts . '.pdf';

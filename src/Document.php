@@ -58,6 +58,28 @@ class Document
         $this->pdf->setMargins($this->marginLeft, $this->marginTop, $this->marginRight);
     }
 
+    // ── Configuration ────────────────────────────────────────────────────────
+
+    /**
+     * Override default margins (15 mm on all sides).
+     * Must be called before addPage().
+     *
+     * @param float $left   Left margin in mm
+     * @param float $top    Top margin in mm
+     * @param float $right  Right margin in mm
+     * @param float $bottom Bottom margin in mm (used for page-break threshold)
+     */
+    public function setMargins(float $left, float $top, float $right, float $bottom = 15.0): static
+    {
+        $this->marginLeft   = $left;
+        $this->marginTop    = $top;
+        $this->marginRight  = $right;
+        $this->marginBottom = $bottom;
+        $this->cursorY      = $top;
+        $this->pdf->setMargins($left, $top, $right);
+        return $this;
+    }
+
     // ── Page ─────────────────────────────────────────────────────────────────
 
     /**

@@ -895,7 +895,24 @@ class Pdf
     }
 
     /**
-     * Supports 8-bit RGB (color type 2) and Grayscale (color type 0) without alpha.
+     * Return the pixel dimensions [width, height] of an image file.
+     * No extension required — uses getimagesize().
+     *
+     * @return array{int, int}
+     * @throws RuntimeException
+     */
+    public function getImagePixelSize(string $file): array
+    {
+        $size = getimagesize($file);
+        if ($size === false) {
+            throw new RuntimeException("Cannot read image dimensions: $file");
+        }
+        return [$size[0], $size[1]];
+    }
+
+    /**
+     * Supports 8-bit RGB (color type 2), Grayscale (color type 0),
+     * and alpha PNG (color types 4 and 6) — alpha is flattened against white.
      *
      * @return array{w: int, h: int, colors: int, colorSpace: string, data: string, type: string}
      * @throws RuntimeException
@@ -920,12 +937,17 @@ class Pdf
             throw new RuntimeException("Only 8-bit PNG is supported (got " . $bitDepth . "-bit): $file");
         }
 
+        // Color types 4 (Gray+Alpha) and 6 (RGBA) — flatten alpha against white via GD
+        if ($colorType === 4 || $colorType === 6) {
+            return $this->parsePngFlattenAlpha($file, $data);
+        }
+
         [$colors, $colorSpace] = match ($colorType) {
             0 => [1, 'DeviceGray'],
             2 => [3, 'DeviceRGB'],
             default => throw new RuntimeException(
                 "Unsupported PNG color type $colorType in: $file\n" .
-                "Supported: 0 (Grayscale), 2 (RGB). Convert to RGB PNG without transparency."
+                "Supported: 0 (Grayscale), 2 (RGB), 4 (Gray+Alpha), 6 (RGBA)."
             ),
         };
 
@@ -952,6 +974,58 @@ class Pdf
             'colorSpace' => $colorSpace,
             'data'       => $idat,
             'type'       => 'png',
+        ];
+    }
+
+    /**
+     * Flatten a PNG with alpha channel against a white background using GD,
+     * then return it as JPEG image info for PDF embedding.
+     *
+     * Requires the GD extension (standard in most PHP distributions).
+     *
+     * @return array{w: int, h: int, colors: int, colorSpace: string, data: string, type: string}
+     * @throws RuntimeException
+     */
+    private function parsePngFlattenAlpha(string $file, string $rawData): array
+    {
+        if (!function_exists('imagecreatefromstring')) {
+            throw new RuntimeException(
+                "PNG with alpha channel requires the GD extension. " .
+                "Enable GD or convert to RGB PNG without transparency: $file"
+            );
+        }
+
+        $src = imagecreatefromstring($rawData);
+        if ($src === false) {
+            throw new RuntimeException("GD could not parse PNG: $file");
+        }
+
+        $w   = imagesx($src);
+        $h   = imagesy($src);
+        $dst = imagecreatetruecolor($w, $h);
+
+        // Fill destination with white background
+        $white = imagecolorallocate($dst, 255, 255, 255);
+        imagefill($dst, 0, 0, $white);
+
+        // Composite alpha source over white background
+        imagealphablending($dst, true);
+        imagecopy($dst, $src, 0, 0, 0, 0, $w, $h);
+        imagedestroy($src);
+
+        // Export as JPEG bytes
+        ob_start();
+        imagejpeg($dst, null, 95);
+        $jpegData = ob_get_clean();
+        imagedestroy($dst);
+
+        return [
+            'w'          => $w,
+            'h'          => $h,
+            'colors'     => 3,
+            'colorSpace' => 'DeviceRGB',
+            'data'       => $jpegData,
+            'type'       => 'jpeg',
         ];
     }
 }
