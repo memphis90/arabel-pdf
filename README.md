@@ -37,7 +37,7 @@ Most PHP PDF libraries are either **too heavy** (mPDF, TCPDF ship megabytes of d
 composer require arabel/pdf
 ```
 
-**Requirements:** PHP 8.1+ · Extensions `zlib` and `iconv` (both enabled by default in most environments)
+**Requirements:** PHP 8.1+ · Extensions `zlib` and `iconv` (both enabled by default in most environments) · `GD` for PNG images with alpha channel
 
 ---
 
@@ -148,6 +148,20 @@ $doc->addPage()
     ->output('dashboard.pdf', 'F');
 ```
 
+### Images in columns
+
+Use `col()->image()` to embed a JPEG or PNG directly inside the grid.  
+Height is auto-calculated from the image's aspect ratio — pass an explicit `$h` (mm) to override.  
+PNG files with alpha channel are supported: the alpha layer is composited against white.
+
+```php
+$doc->row()
+    ->col(3)->image('logo.png')        // auto height from aspect ratio
+    ->col(3)->image('badge.png', 20)   // forced 20 mm height
+    ->col(6)->h1('Company Name')
+->endRow();
+```
+
 ### Tables
 
 ```php
@@ -216,6 +230,7 @@ $style->tableLineH  = 5.0;
 
 | Method | Description |
 |--------|-------------|
+| `setMargins(l, t, r, b)` | Override default 15 mm margins — call before `addPage()` |
 | `addPage('P'\|'L', $header)` | New page — portrait or landscape, optional named header |
 | `setHeader(string $name = 'default')` | Register a named header → `Header` |
 | `setFooter(string $name = 'default')` | Register a named footer → `Footer` |
@@ -228,6 +243,7 @@ $style->tableLineH  = 5.0;
 | `hr()` | Horizontal rule |
 | `spacer(float $mm = 6)` | Vertical blank space |
 | `row()` | Open a 12-column grid row → `Row` |
+| `col(int)->image(file, h)` | Embed image in a column — auto height from aspect ratio |
 | `table(array $headers)` | Open a table → `Table` |
 | `panel()` | Open a colored content block → `Panel` |
 | `output(string, string)` | Finalize and output the PDF |
@@ -330,7 +346,7 @@ $doc->spacer()
 - [x] Fluent `DocumentStyle` configurators (`h1/h2/p()`)
 - [ ] Table helper for totals rows
 - [ ] `money()` / `date()` formatting helpers
-- [ ] PNG with alpha channel / logo support
+- [x] PNG with alpha channel / logo support (`col()->image()`, auto aspect ratio)
 - [ ] Expanded test coverage and official benchmarks
 
 ---
