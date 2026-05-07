@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Arabel\Pdf;
 
+use Arabel\Pdf\Layout\Col;
 use Arabel\Pdf\Layout\Footer;
 use Arabel\Pdf\Layout\Header;
 use Arabel\Pdf\Layout\Panel;
@@ -322,6 +323,187 @@ class Document
     public function raw(): Pdf
     {
         return $this->pdf;
+    }
+
+    // ── fromJson ─────────────────────────────────────────────────────────────
+
+    /**
+     * Deserialize a DocAst produced by arabel-pdf-js and render it to PDF.
+     *
+     * Accepts either a JSON string or an already-decoded array.
+     * The style block is optional — omit it to keep the Document defaults.
+     *
+     * Example:
+     *   $doc = Document::fromJson($request->getBody());
+     *   return $doc->output('invoice.pdf', 'S');
+     *
+     * @param string|array<string, mixed> $json
+     */
+    public static function fromJson(
+        string|array $json,
+        string       $font   = '',
+        string|false $header = null,
+    ): static {
+        $ast = is_string($json) ? json_decode($json, true, 512, JSON_THROW_ON_ERROR) : $json;
+
+        $style = isset($ast['style']) ? DocumentStyle::fromArray($ast['style']) : null;
+        $doc   = new static($font, $style);
+
+        foreach ($ast['pages'] ?? [] as $page) {
+            $doc->addPage('P', $header);
+            foreach ($page['elements'] ?? [] as $el) {
+                $doc->applyElement($el);
+            }
+        }
+
+        return $doc;
+    }
+
+    /**
+     * Apply a single DocElement from the AST to this document.
+     *
+     * @param array<string, mixed> $el
+     */
+    private function applyElement(array $el): void
+    {
+        $type = $el['type'] ?? '';
+        $text = (string) ($el['text'] ?? '');
+
+        match ($type) {
+            'h1'           => $this->h1($text),
+            'h2'           => $this->h2($text),
+            'p', 'text'    => $this->p($text),
+            'b'            => $this->b($text),
+            'i'            => $this->i($text),
+            'bi'           => $this->bi($text),
+            'hr'           => $this->hr(),
+            'spacer'       => $this->spacer((float) ($el['height'] ?? 6.0)),
+            'row'          => $this->applyRow($el),
+            'table'        => $this->applyTable($el),
+            'panel'        => $this->applyPanel($el),
+            default        => null,
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $el
+     */
+    private function applyRow(array $el): void
+    {
+        $cols = $el['cols'] ?? [];
+        if (empty($cols)) {
+            return;
+        }
+
+        $row = $this->row();
+
+        foreach ($cols as $colDef) {
+            $span     = (int) ($colDef['span'] ?? 1);
+            $elements = $colDef['elements'] ?? [];
+
+            if (empty($elements)) {
+                // Empty col: render an invisible spacer to hold the grid position.
+                $row = $row->col($span)->p('');
+                continue;
+            }
+
+            $col = $row->col($span);
+
+            if (count($elements) === 1) {
+                // Single element — use the standard one-call API.
+                $row = $this->applyColElement($col, $elements[0]);
+            } else {
+                // Multiple elements — use batch() which renders them all at the
+                // correct Y positions and tracks the combined column height.
+                $row = $col->batch($elements);
+            }
+        }
+
+        $row->endRow();
+    }
+
+    /**
+     * Render one element into a Col and return the parent Row.
+     *
+     * @param array<string, mixed> $el
+     */
+    private function applyColElement(Col $col, array $el): Row
+    {
+        $type = $el['type'] ?? '';
+        $text = (string) ($el['text'] ?? '');
+
+        return match ($type) {
+            'h1'        => $col->h1($text),
+            'h2'        => $col->h2($text),
+            'p', 'text' => $col->p($text),
+            'b'         => $col->b($text),
+            'i'         => $col->i($text),
+            'bi'        => $col->bi($text),
+            default     => $col->p($text),
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $el
+     */
+    private function applyTable(array $el): void
+    {
+        $headers = (array) ($el['headers'] ?? []);
+        if (empty($headers)) {
+            return;
+        }
+
+        $table = $this->table($headers);
+
+        if (!empty($el['widths'])) {
+            $table->widths(array_map('intval', $el['widths']));
+        }
+        if (!empty($el['aligns'])) {
+            $table->align(array_map('strval', $el['aligns']));
+        }
+
+        foreach ($el['rows'] ?? [] as $row) {
+            $table->tr(array_map('strval', (array) $row));
+        }
+
+        $table->endTable();
+    }
+
+    /**
+     * @param array<string, mixed> $el
+     */
+    private function applyPanel(array $el): void
+    {
+        $panel = $this->panel();
+
+        if (!empty($el['bg'])) {
+            $panel->bg((array) $el['bg']);
+        }
+        if (!empty($el['fg'])) {
+            $panel->fg((array) $el['fg']);
+        }
+        if (isset($el['padding'])) {
+            $panel->padding((float) $el['padding']);
+        }
+
+        foreach ($el['elements'] ?? [] as $inner) {
+            $type = $inner['type'] ?? '';
+            $text = (string) ($inner['text'] ?? '');
+
+            match ($type) {
+                'h1'        => $panel->h1($text),
+                'h2'        => $panel->h2($text),
+                'p', 'text' => $panel->p($text),
+                'b'         => $panel->b($text),
+                'i'         => $panel->i($text),
+                'bi'        => $panel->bi($text),
+                'hr'        => $panel->hr(),
+                'spacer'    => $panel->spacer((float) ($inner['height'] ?? 6.0)),
+                default     => null,
+            };
+        }
+
+        $panel->endPanel();
     }
 
     // ── Internal ─────────────────────────────────────────────────────────────

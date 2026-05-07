@@ -122,4 +122,51 @@ class DocumentStyle
     public array $tableAltBg  = [245, 247, 255];  // alternating row background
     public float $tableRowH   = 7.0;   // minimum row height in mm
     public float $tableLineH  = 5.0;   // line height when text wraps (mm per line)
+
+    // ── Deserialization ──────────────────────────────────────────────────────
+
+    /**
+     * Reconstruct a DocumentStyle from a DocumentStyleConfig array
+     * produced by arabel-pdf-js (DocumentStyle.toConfig()).
+     *
+     * @param array<string, mixed> $cfg
+     */
+    public static function fromArray(array $cfg): static
+    {
+        $s = new static();
+
+        if (isset($cfg['h1'])) {
+            if (isset($cfg['h1']['size']))    $s->h1Size    = (float)  $cfg['h1']['size'];
+            if (isset($cfg['h1']['color']))   $s->h1Color   = (array)  $cfg['h1']['color'];
+            if (isset($cfg['h1']['style']))   $s->h1Style   = (string) $cfg['h1']['style'];
+            if (isset($cfg['h1']['spacing'])) $s->h1Spacing = (float)  $cfg['h1']['spacing'];
+        }
+        if (isset($cfg['h2'])) {
+            if (isset($cfg['h2']['size']))    $s->h2Size    = (float)  $cfg['h2']['size'];
+            if (isset($cfg['h2']['color']))   $s->h2Color   = (array)  $cfg['h2']['color'];
+            if (isset($cfg['h2']['style']))   $s->h2Style   = (string) $cfg['h2']['style'];
+            if (isset($cfg['h2']['spacing'])) $s->h2Spacing = (float)  $cfg['h2']['spacing'];
+        }
+        if (isset($cfg['p'])) {
+            if (isset($cfg['p']['size']))    $s->pSize    = (float)  $cfg['p']['size'];
+            if (isset($cfg['p']['color']))   $s->pColor   = (array)  $cfg['p']['color'];
+            if (isset($cfg['p']['style']))   $s->pStyle   = (string) $cfg['p']['style'];
+            if (isset($cfg['p']['spacing'])) $s->pSpacing = (float)  $cfg['p']['spacing'];
+        }
+        if (isset($cfg['hr'])) {
+            if (isset($cfg['hr']['color']))   $s->hrColor   = (array) $cfg['hr']['color'];
+            if (isset($cfg['hr']['spacing'])) $s->hrSpacing = (float) $cfg['hr']['spacing'];
+        }
+        if (isset($cfg['table'])) {
+            $t = $cfg['table'];
+            if (isset($t['headBg'])) $s->tableHeadBg = (array) $t['headBg'];
+            if (isset($t['headFg'])) $s->tableHeadFg = (array) $t['headFg'];
+            if (isset($t['headH']))  $s->tableHeadH  = (float) $t['headH'];
+            if (isset($t['rowFg']))  $s->tableRowFg  = (array) $t['rowFg'];
+            if (isset($t['altBg']))  $s->tableAltBg  = (array) $t['altBg'];
+            if (isset($t['rowH']))   $s->tableRowH   = (float) $t['rowH'];
+        }
+
+        return $s;
+    }
 }

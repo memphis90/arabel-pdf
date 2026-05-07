@@ -132,6 +132,75 @@ class Col
     }
 
     /**
+     * Render multiple elements stacked vertically in this column.
+     * Used by Document::fromJson() for columns that contain more than one element.
+     *
+     * @param array<array{type:string, text?:string, height?:float}> $elements
+     */
+    public function batch(array $elements): Row
+    {
+        if (empty($elements)) {
+            return $this->p('');
+        }
+
+        $curY   = $this->y;
+        $totalH = 0.0;
+
+        foreach ($elements as $el) {
+            $h       = $this->renderAt($el, $curY);
+            $curY   += $h;
+            $totalH += $h;
+        }
+
+        $this->row->trackHeight($totalH);
+        return $this->row;
+    }
+
+    /**
+     * Render a single AST element at an explicit Y position within this column.
+     * Returns the height consumed (mm).
+     *
+     * @param array{type:string, text?:string, height?:float} $el
+     */
+    private function renderAt(array $el, float $y): float
+    {
+        $s    = $this->style;
+        $pdf  = $this->pdf;
+        $type = $el['type'] ?? '';
+        $text = (string) ($el['text'] ?? '');
+
+        switch ($type) {
+            case 'h1':
+                $pdf->setFont($this->documentFont, $s->h1Size, $s->h1Style)->setTextColor(...$s->h1Color);
+                return $pdf->multiLine($this->x, $y, $this->width, $text, $s->h1Spacing);
+            case 'h2':
+                $pdf->setFont($this->documentFont, $s->h2Size, $s->h2Style)->setTextColor(...$s->h2Color);
+                return $pdf->multiLine($this->x, $y, $this->width, $text, $s->h2Spacing);
+            case 'p':
+            case 'text':
+                $pdf->setFont($this->documentFont, $s->pSize, $s->pStyle)->setTextColor(...$s->pColor);
+                return $pdf->multiLine($this->x, $y, $this->width, $text, $s->pSpacing);
+            case 'b':
+                $pdf->setFont($this->documentFont, $s->pSize, 'B')->setTextColor(...$s->pColor);
+                return $pdf->multiLine($this->x, $y, $this->width, $text, $s->pSpacing);
+            case 'i':
+                $pdf->setFont($this->documentFont, $s->pSize, 'I')->setTextColor(...$s->pColor);
+                return $pdf->multiLine($this->x, $y, $this->width, $text, $s->pSpacing);
+            case 'bi':
+                $pdf->setFont($this->documentFont, $s->pSize, 'BI')->setTextColor(...$s->pColor);
+                return $pdf->multiLine($this->x, $y, $this->width, $text, $s->pSpacing);
+            case 'hr':
+                $pdf->setDrawColor(...$s->hrColor)->setLineWidth(0.2)
+                    ->line($this->x, $y, $this->x + $this->width, $y);
+                return $s->hrSpacing;
+            case 'spacer':
+                return (float) ($el['height'] ?? 6.0);
+            default:
+                return 0.0;
+        }
+    }
+
+    /**
      * Render an image filling the column width — returns the parent Row.
      *
      * The height is calculated automatically to preserve the aspect ratio.
